@@ -165,7 +165,9 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
 .maplibregl-popup{z-index:6}
 .xbtn{position:absolute;top:8px;right:8px;width:36px;height:36px;padding:0;margin:0;box-sizing:border-box;border:0;border-radius:50%;-webkit-appearance:none;appearance:none;background:var(--night-3);color:var(--text);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
 .xbtn:hover{background:var(--star-deep);color:#1b2433}
-.placebar .step{padding-right:44px;min-height:30px;display:flex;align-items:center}
+.backbtn{position:absolute;top:8px;right:8px;display:flex;align-items:center;gap:4px;height:34px;padding:0 14px 0 10px;border:1px solid var(--night-3);border-radius:999px;background:var(--night-3);color:var(--text);font-size:14px;font-weight:500;cursor:pointer}
+.backbtn:hover{border-color:var(--star-deep)}
+.placebar .step{padding-right:90px;min-height:30px;display:flex;align-items:center}
 .mapbar{position:absolute;top:4px;left:max(4px,env(safe-area-inset-left,0px));z-index:3;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 70px)}
 .pill{border:0;border-radius:999px;padding:8px 13px;font-size:13px;font-weight:500;background:rgba(14,26,43,.9);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;backdrop-filter:blur(4px)}
 .pill[aria-pressed="true"]{background:var(--star);color:#1b2433}
@@ -384,7 +386,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
     </div>
     <div class="cross" id="cross" hidden aria-hidden="true"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="13" fill="none" stroke="#fff" stroke-width="5"/><circle cx="32" cy="32" r="13" fill="none" stroke="#d62839" stroke-width="2.5"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#d62839" stroke-width="2" stroke-linecap="round"/><circle cx="32" cy="32" r="2.5" fill="#d62839"/></svg></div>
     <div class="buildbar placebar" id="placebar" hidden>
-      <button class="xbtn" id="placeCancel" aria-label="検索結果に戻る" title="検索結果に戻る"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      <button class="backbtn" id="placeCancel" aria-label="戻る" title="戻る"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>戻る</button>
       <p class="step" id="placeStep">位置を合わせる</p>
       <input type="text" id="placeName" aria-label="場所の名前" placeholder="場所の名前">
       <p class="help" style="margin:0">地図を動かして、十字をぴったりの場所に合わせてください。</p>
