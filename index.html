@@ -1,4 +1,4 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="LeyLine Finder">
 <meta name="theme-color" content="#0e1a2b"><link rel="manifest" href="manifest.webmanifest">
@@ -31,7 +31,8 @@
 html,body{height:100%}
 body{background:var(--night);color:var(--text);font-family:var(--f-body);font-size:14px;overflow:hidden}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--night)}
-button,input,select{font:inherit;color:inherit}
+button,input,select{font:inherit;color:inherit;box-sizing:border-box}
+input,select,textarea{font-size:16px!important}
 #app{display:flex;flex-direction:column-reverse;height:100%}
 #mapwrap{position:relative;flex:1;min-height:0;background:var(--map-bg)}
 #map{position:absolute;inset:0}
@@ -316,6 +317,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
       <input type="text" id="placeName" aria-label="場所の名前" placeholder="場所の名前">
       <p class="help" style="margin:0">地図を動かして、十字の中心をピンを立てたい場所にぴったり合わせてください。拡大・縮小もできます。</p>
       <p class="note" id="placeCoord" style="margin:0;font-variant-numeric:tabular-nums"></p>
+      <label class="check"><input type="checkbox" id="placeBase"> この場所を太陽の道の基点にする</label>
       <p style="margin:0;font-weight:700">この場所でよいですか？</p>
       <div class="row">
         <button class="btn gold" id="placeOk">この場所でOK（固定する）</button>
@@ -558,8 +560,11 @@ function openPinPop(id){
   const el=document.createElement("div"); el.className="pp";
   el.innerHTML=`<b>${pinNo(id)}. ${esc(p.name)}</b><div class="pc">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div>
     ${isBase?`<p class="pc" style="color:var(--star)">太陽の道の基点です</p>`:`<button class="btn gold small" data-pp="base">ここを太陽の道の基点にする</button>`}
-    <button class="btn small" data-pp="fix">位置を直す</button>`;
+    <button class="btn small" data-pp="fix">位置を直す</button>
+    <button class="btn small danger" data-pp="del">この地点を消す</button>`;
   el.addEventListener("click",e=>{const b=e.target.closest("[data-pp]");if(!b)return;
+    if(b.dataset.pp==="del"&&!b.dataset.armed){b.dataset.armed="1";b.textContent="本当に消す？もう一度押す";return;}
+    if(b.dataset.pp==="del"){const nm=p.name;pop.remove();removePin(id);toast(`「${nm}」を消しました`);return;}
     if(b.dataset.pp==="base"){S.sun.base=id;S.sun.on=true;save();renderAll();toast(`「${p.name}」を太陽の道の基点にしました`);}
     if(b.dataset.pp==="fix"){startPlace({lat:p.lat,lon:p.lon,name:p.name,zoom:Math.max(map.getZoom(),17),editId:id});}
     pop.remove();});
@@ -659,6 +664,10 @@ let DB=null;
 function loadDB(){if(DB)return DB;const P=PLACE_META.prefs,M=PLACE_META.munis;
   DB=PLACE_DATA.split("\n").map(r=>{const[n,la,lo,t,p,m]=r.split("\t");const pr=P[+p]||"",mu=M[+m]||"";
     return {n,lat:+la/1e5,lon:+lo/1e5,t:+t,where:(pr+(mu&&mu!==pr?" "+mu:"")).trim(),nn:norm(n),nw:norm(pr+mu)}});
+  // よく知られた名前(例：伊勢神宮 内宮)も検索に入れる。都道府県は近くのデータから
+  PRESETS.forEach(p=>{let best=null,bd=1e9;for(const d of DB){const k=(d.lat-p[1])**2+(d.lon-p[2])**2;if(k<bd&&d.where){bd=k;best=d;}}
+    const t=/寺|院/.test(p[0])?1:/山|峰|島/.test(p[0])?2:0;
+    DB.push({n:p[0],lat:p[1],lon:p[2],t,where:best?best.where.split(" ")[0]:"",nn:norm(p[0]),nw:norm(best?best.where:"")});});
   return DB;}
 function localSearch(q){
   const db=loadDB(),qq=norm(q),toks=q.normalize("NFKC").split(/[\s　]+/).map(norm).filter(Boolean);if(!qq)return[];
@@ -694,7 +703,7 @@ function showResults(arr){lastResults=arr;$("results").innerHTML=arr.map((r,i)=>
 let qT;$("q").addEventListener("input",e=>{clearTimeout(qT);qT=setTimeout(()=>doSearch(e.target.value),250);});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doSearch(e.target.value);}});
 $("results").addEventListener("click",e=>{const b=e.target.closest("[data-res]");if(!b)return;const r=lastResults[+b.dataset.res];
-  $("results").innerHTML="";
+  searchSeq++;clearTimeout(qT);$("results").innerHTML="";
   startPlace({lat:r.lat,lon:r.lon,name:r.sub==="座標"?"":r.name,zoom:17});});
 
 /* ============ イベント ============ */
@@ -731,6 +740,7 @@ function startPlace(o){
   $("placeStep").textContent=o.editId?`${pinNo(o.editId)}番のピンの位置を直す`:`${S.pins.length+1}番目のピンを立てる`;
   $("placeName").value=o.name||"";$("placeName").readOnly=!!o.name;$("placeName").classList.toggle("ro",!!o.name);
   $("placeName").placeholder="場所の名前を入れてください";
+  $("placeBase").checked=!!(o.editId&&S.sun.on&&S.sun.base===o.editId);
   $("cross").hidden=false;$("placebar").hidden=false;document.querySelector(".mapbar").hidden=true;
   if(window.innerWidth<900){$("panel").classList.add("min");syncChev();}
   setTimeout(()=>{map.resize();map.jumpTo({center:[o.lon,o.lat],zoom:Math.min(18,o.zoom||16)});updCoord();},60);
@@ -740,9 +750,10 @@ function endPlace(){place=null;$("cross").hidden=true;$("placebar").hidden=true;
   Object.values(pinMarkers).forEach(m=>m.getElement().style.opacity="");
   $("panel").classList.remove("min");syncChev();setTimeout(()=>map.resize(),280);}
 $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim();
-  if(place.editId){const p=pinById(place.editId);p.lat=c.lat;p.lon=c.lng;if(nm)p.name=nm;clearExample();save();renderAll();toast(`${pinNo(p.id)}番のピンを新しい位置で固定しました`);}
-  else{const p=addPin({lat:c.lat,lon:c.lng,name:nm||null});if(p)toast(`${S.pins.length}番目のピン「${p.name}」を固定しました。次の場所を探せます。`);}
-  endPlace();showTab("pins");$("q").value="";
+  const wantBase=$("placeBase").checked;
+  if(place.editId){const p=pinById(place.editId);p.lat=c.lat;p.lon=c.lng;if(nm)p.name=nm;if(wantBase){S.sun.base=p.id;S.sun.on=true;}clearExample();save();renderAll();toast(`${pinNo(p.id)}番のピンを新しい位置で固定しました${wantBase?"(太陽の道の基点)":""}`);}
+  else{const p=addPin({lat:c.lat,lon:c.lng,name:nm||null});if(p){if(wantBase){S.sun.base=p.id;S.sun.on=true;save();renderAll();}toast(`${S.pins.length}番目のピン「${p.name}」を固定しました${wantBase?"(太陽の道の基点)":""}。次の場所を探せます。`);}}
+  endPlace();showTab("pins");$("q").value="";searchSeq++;$("results").innerHTML="";
   if(S.pins.length>=2)setTimeout(()=>fitAll(),300);
   if(S.pins.length<MAXP)setTimeout(()=>{try{$("q").focus({preventScroll:true});}catch(e){}},350);};
 $("placeCancel").onclick=()=>{const o=place;endPlace();if(o&&!o.editId&&S.pins.length>=2)setTimeout(()=>fitAll(),300);};
