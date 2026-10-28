@@ -286,6 +286,8 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
       <section class="tab" id="tab-sun" hidden>
         <div class="group">
           <label class="check"><input type="checkbox" id="sunOn"> 夏至・冬至・春分・秋分の太陽の道を表示する</label>
+          <label class="check"><input type="checkbox" id="nsewOn"> 東西南北の線を表示する</label>
+          <p class="help" style="margin:0">東西南北の線は、基点から真北・真南へ延びる線と、基点と同じ緯度を真東・真西へたどる線です。紺色で描きます。</p>
           <div class="row">
             <label for="sunBase" class="note">基点</label>
             <select id="sunBase" style="flex:1"></select>
@@ -522,11 +524,19 @@ function wExpr(m,add){const mpp0=40075016.686*Math.cos(rad(m.getCenter().lat))/5
   return ["interpolate",["exponential",2],["zoom"],...st];}
 function applyWidths(m){if(!m.getLayer("lines"))return;
   [["lines",0],["lines-case",2],["sun-solid",0],["sun-dash",0],["sun-case",2]].forEach(([id,a])=>m.setPaintProperty(id,"line-width",wExpr(m,a)));}
+function basePins(){if(!S.pins.length)return[];if(S.sun.base==="all")return S.pins;const b=pinById(S.sun.base);return b?[b]:[S.pins[0]];}
+const NSEW_C="#1d3557";
+/* 東西南北の線：南北は子午線(真北・真南)、東西は同じ緯度に沿った線 */
+function nsewLines(b){const L=SUN_LEN,n=nSeg(L);const ns=[],ew=[];
+  for(let i=n;i>=0;i--)ns.push(dest(b,180,L*i/n));for(let i=1;i<=n;i++)ns.push(dest(b,0,L*i/n));
+  const dlon=L/(111.32*Math.cos(rad(b.lat)));for(let i=-n;i<=n;i++)ew.push({lat:b.lat,lon:b.lon+dlon*i/n});
+  return [ns,ew];}
 function sunBasePins(){if(!S.sun.on||!S.pins.length)return[];if(S.sun.base==="all")return S.pins;const b=pinById(S.sun.base);return b?[b]:[S.pins[0]];}
 function overlayData(){
   const lf=[],sf=[];
   S.lines.forEach(L=>{if(!L.on)return;const g=lineGeom(L);if(!g)return;
     lf.push({type:"Feature",properties:{c:L.color,w:3.2},geometry:{type:"LineString",coordinates:g.pts.map(p=>[p.lon,p.lat])}});});
+  if(S.nsew) basePins().forEach(b=>nsewLines(b).forEach(pts=>sf.push({type:"Feature",properties:{c:NSEW_C,w:2,dash:0},geometry:{type:"LineString",coordinates:pts.map(p=>[p.lon,p.lat])}})));
   sunBasePins().forEach(b=>SUN.forEach(([k,,dec,rise,c])=>{if(!S.sun.show[k])return;const A=sunAz(b.lat,dec);if(A==null)return;const az=rise?A:360-A;
     const n=nSeg(SUN_LEN),pts=[];for(let i=0;i<=n;i++)pts.push(dest(b,az,SUN_LEN*i/n));
     sf.push({type:"Feature",properties:{c,w:2.4,dash:rise?0:1},geometry:{type:"LineString",coordinates:unwrap(pts).map(p=>[p.lon,p.lat])}});}));
@@ -540,6 +550,9 @@ function labelSpecs(m){
     if(L.mode==="straight"||st.segs.length===1){const[a,b]=st.g.ends;const mid=gc(a,b,2)[1];
       out.push({kind:"line",lat:mid.lat,lon:mid.lon,c:L.color,text:`${fmtKm(st.len)}・方位 ${fmtDeg(st.az)}`});}
     else st.segs.forEach(s=>{const mid=gc(s.a,s.b,2)[1];out.push({kind:"line",lat:mid.lat,lon:mid.lon,c:L.color,text:`${fmtKm(s.d)}・${fmtDeg(s.az)}`});});});
+  if(S.nsew){const nb=basePins();const km=kmPerPx(m)*110;
+    nb.forEach(b=>{[[0,"北"],[90,"東"],[180,"南"],[270,"西"]].forEach(([az,t])=>{const p=az%180===0?dest(b,az,km):{lat:b.lat,lon:b.lon+(az===90?1:-1)*km/(111.32*Math.cos(rad(b.lat)))};
+      out.push({kind:"sun",lat:p.lat,lon:p.lon,c:NSEW_C,text:nb.length>1?t:`${t} ${az}°`});});});}
   const bases=sunBasePins();
   if(bases.length){const km=Math.min(SUN_LEN*.92,kmPerPx(m)*150);
     bases.forEach((b,bi)=>SUN.forEach(([k,name,dec,rise,c])=>{if(!S.sun.show[k])return;const A=sunAz(b.lat,dec);if(A==null)return;const az=rise?A:360-A;
@@ -715,7 +728,7 @@ function renderLines(){
   if(build){/* nothing */}
 }
 function renderSun(){
-  $("sunOn").checked=S.sun.on;
+  $("sunOn").checked=S.sun.on;$("nsewOn").checked=!!S.nsew;
   $("sunBase").innerHTML=S.pins.map((p,i)=>`<option value="${p.id}" ${S.sun.base===p.id?"selected":""}>${i+1}. ${esc(p.name)}</option>`).join("")+(S.pins.length>1?`<option value="all" ${S.sun.base==="all"?"selected":""}>すべてのピンから</option>`:"");
   const b=S.sun.base==="all"?S.pins[0]:(pinById(S.sun.base)||S.pins[0]);
   $("sunTable").innerHTML=SUN.map(([k,name,dec,rise,c])=>{const A=b?sunAz(b.lat,dec):null;const az=A==null?null:(rise?A:360-A);
@@ -724,7 +737,11 @@ function renderSun(){
   const hits=[];const tol=S.tol;
   if(S.sun.on) sunBasePins().forEach(bp=>SUN.forEach(([k,name,dec,rise])=>{if(!S.sun.show[k])return;const A=sunAz(bp.lat,dec);if(A==null)return;const az=rise?A:360-A;
     const far=dest(bp,az,SUN_LEN);S.pins.forEach(p=>{if(p.id===bp.id)return;const x=xtrack(bp,far,p);if(Math.abs(x.xt)<=tol&&x.at>0&&x.at<=SUN_LEN)hits.push({bp,p,name,xt:x.xt,at:x.at});});}));
-  $("sunHits").innerHTML=!S.sun.on?`<p class="help">太陽の道を表示すると、線上(ずれ${tol}km以内)に乗るピンをここに出します。</p>`:
+  if(S.nsew) basePins().forEach(bp=>S.pins.forEach(p=>{if(p.id===bp.id)return;
+    const dNS=Math.abs(xtrack(bp,dest(bp,0,100),p).xt),dEW=Math.abs(p.lat-bp.lat)*111.2;
+    if(dNS<=tol)hits.push({bp,p,name:p.lat>bp.lat?"南北(北側)":"南北(南側)",xt:dNS,at:dist(bp,p)});
+    if(dEW<=tol)hits.push({bp,p,name:p.lon>bp.lon?"東西(東側)":"東西(西側)",xt:dEW,at:dist(bp,p)});}));
+  $("sunHits").innerHTML=!S.sun.on&&!S.nsew?`<p class="help">太陽の道を表示すると、線上(ずれ${tol}km以内)に乗るピンをここに出します。</p>`:
     hits.length?hits.map(h=>`<div class="item"><span>${circ(h.bp.id)} ${esc(h.bp.name)} の${h.name}の線上に <b>${circ(h.p.id)} ${esc(h.p.name)}</b></span><small class="note">${fmtKm(h.at)}先・ずれ${fmtKm(Math.abs(h.xt))}</small></div>`).join(""):
     `<p class="help">ずれ${tol}km以内で太陽の道に乗っているピンはありません(許容はライン画面で変えられます)。</p>`;
 }
@@ -993,6 +1010,7 @@ $("linelist").addEventListener("click",e=>{const m=e.target.closest("[data-mode]
   if(f){const st=lineStats(S.lines.find(l=>l.id===+f.dataset.fit));const b=new maplibregl.LngLatBounds();st.g.pts.forEach(p=>b.extend([p.lon,p.lat]));map.fitBounds(b,{padding:60,maxZoom:14});}
   if(d){S.lines=S.lines.filter(l=>l.id!==+d.dataset.ldel);save();renderAll();}});
 $("sunOn").onchange=e=>{S.sun.on=e.target.checked;save();renderAll();};
+$("nsewOn").onchange=e=>{S.nsew=e.target.checked;save();renderAll();};
 $("sunBase").onchange=e=>{S.sun.base=e.target.value==="all"?"all":+e.target.value;save();renderAll();};
 $("sunTable").addEventListener("change",e=>{const k=e.target.dataset.sun;if(k){S.sun.show[k]=e.target.checked;if(e.target.checked)S.sun.on=true;save();renderAll();}});
 $("baseRadios").addEventListener("change",e=>{S.base=e.target.value;save();styleFor(S.base).then(st=>map.setStyle(st,{diff:false}));});
@@ -1021,6 +1039,7 @@ async function exportJPG(want,btn,share){
     // 凡例の高さを先に見積もる
     const items=[];S.lines.forEach(L=>{if(!L.on)return;const st=lineStats(L);if(!st)return;
       items.push({c:L.color,dash:false,text:`${lineTitle(L)}　${L.mode==="straight"?fmtKm(st.len)+"・方位"+fmtDeg(st.az):"合計"+fmtKm(st.len)}`});});
+    if(S.nsew&&basePins().length)items.push({c:NSEW_C,dash:false,text:`東西南北の線(基点：${basePins().length>1?"各ピン":basePins()[0].name})`});
     const bps=sunBasePins();
     if(bps.length) SUN.forEach(([k,name,dec,rise,c])=>{if(!S.sun.show[k])return;const A=sunAz(bps[0].lat,dec);const az=A==null?null:rise?A:360-A;
       items.push({c,dash:!rise,text:`${name}${bps.length===1&&az!=null?"　"+fmtDeg(az):""}${bps.length===1?"(基点："+bps[0].name+")":"(各ピンから)"}`});});
@@ -1085,7 +1104,7 @@ const b64d=str=>{str=str.replace(/-/g,"+").replace(/_/g,"/");const bin=atob(str)
 function packMap(){const idx=new Map(S.pins.map((p,i)=>[p.id,i]));
   return b64e(JSON.stringify({v:1,p:S.pins.map(p=>[p.name,+p.lat.toFixed(6),+p.lon.toFixed(6),p.where||""]),
     l:S.lines.map(L=>[L.pins.map(id=>idx.get(id)),L.mode==="path"?1:0,L.color,L.ext||0,L.on?1:0,L.name||""]),
-    s:[S.sun.on?1:0,S.sun.base==="all"?-2:(idx.has(S.sun.base)?idx.get(S.sun.base):-1),SUN.map(([k])=>S.sun.show[k]?1:0).join("")],b:S.base}));}
+    s:[S.sun.on?1:0,S.sun.base==="all"?-2:(idx.has(S.sun.base)?idx.get(S.sun.base):-1),SUN.map(([k])=>S.sun.show[k]?1:0).join(""),S.nsew?1:0],b:S.base}));}
 function unpackMap(str){const o=JSON.parse(b64d(str));if(!o||o.v!==1)throw 0;
   const pins=o.p.slice(0,MAXP).map((a,i)=>({id:i+1,name:String(a[0]).normalize("NFKC"),lat:+a[1],lon:+a[2],where:a[3]||""}));
   const lines=(o.l||[]).map((a,i)=>({id:i+1,pins:a[0].filter(k=>k>=0&&k<pins.length).map(k=>k+1),mode:a[1]?"path":"straight",color:a[2]||LINE_COLORS[i%LINE_COLORS.length],ext:+a[3]||0,on:!!a[4],name:a[5]||undefined})).filter(L=>L.pins.length>=2);
@@ -1111,7 +1130,7 @@ function loadShared(){const h=location.hash;if(!h.startsWith("#m="))return false
     if(S.pins.length)S.prev={pins:S.pins,lines:S.lines,base:S.sun.base};
     S.pins=o.pins;S.lines=o.lines;S.seq.pin=o.pins.length+1;S.seq.line=o.lines.length+1;
     if(o.sun){S.sun.on=!!o.sun[0];S.sun.base=o.sun[1]===-2?"all":(o.sun[1]>=0?o.sun[1]+1:(o.pins[0]?1:null));
-      if(o.sun[2])SUN.forEach(([k],i)=>S.sun.show[k]=o.sun[2][i]==="1");}
+      if(o.sun[2])SUN.forEach(([k],i)=>S.sun.show[k]=o.sun[2][i]==="1");S.nsew=!!o.sun[3];}
     if(o.base&&["osm","positron","std","photo"].includes(o.base))S.base=o.base;
     save();history.replaceState(null,"",location.pathname+location.search);
     setTimeout(()=>toast(`共有された地図を開きました(${o.pins.length}か所)`),800);return true;}
