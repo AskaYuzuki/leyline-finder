@@ -327,7 +327,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
         <div class="group">
           <h2>地図に表示する目印</h2>
           <div id="poiChecks" class="group" style="gap:6px"></div>
-          <p class="help">OpenStreetMap(世界中の人が書き込む地図)に登録されている場所を、色の丸で表示します。町の中の細い道が見えるくらい(右下の縮尺の目盛りが300〜500m前後)まで拡大すると出てきます。どの地図(国土地理院・航空写真も)でも表示され、JPG保存にも入ります。古墳・遺跡は名前で見分けているので、登録のない場所は出ず、関係ない場所がまじることもあります。</p>
+          <p class="help">OpenStreetMap(世界中の人が書き込む地図)に登録されている場所を、色の丸で表示します。右下の縮尺の目盛りが1kmくらいまで拡大すると出てきます。どの地図(国土地理院・航空写真も)でも表示され、JPG保存にも入ります。古墳・遺跡は名前で見分けているので、登録のない場所は出ず、関係ない場所がまじることもあります。</p>
         </div>
         <div class="group">
           <h2>共有する</h2>
@@ -500,12 +500,12 @@ function addOverlay(m){
   if(!m.getLayer("relief")) m.addLayer({id:"relief",type:"raster",source:"relief",paint:{"raster-opacity":.32},layout:{visibility:S.relief?"visible":"none"}});
   for(const id of ["sun","lines"]) if(!m.getSource(id)) m.addSource(id,{type:"geojson",data:{type:"FeatureCollection",features:[]}});
   const cas={"line-color":"#ffffff","line-opacity":.85,"line-width":wExpr(m,2)};
-  if(!m.getSource("ofm")) m.addSource("ofm",{type:"vector",url:"https://tiles.openfreemap.org/planet",attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © OpenStreetMap'});
-  POI_CATS.forEach(c=>{const vis=(S.poi&&S.poi[c.k]===false)?"none":"visible";
-    if(!m.getLayer("poi-"+c.k)) m.addLayer({id:"poi-"+c.k,type:"circle",source:"ofm","source-layer":"poi",minzoom:11.5,filter:c.f,layout:{visibility:vis},
+  if(!m.getSource("poiall")) m.addSource("poiall",{type:"geojson",data:poiData,attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © OpenStreetMap'});
+  POI_CATS.forEach(c=>{const vis=(S.poi&&S.poi[c.k]===false)?"none":"visible",f=["==",["get","k"],c.k];
+    if(!m.getLayer("poi-"+c.k)) m.addLayer({id:"poi-"+c.k,type:"circle",source:"poiall",filter:f,layout:{visibility:vis},
       paint:{"circle-color":c.c,"circle-radius":["interpolate",["linear"],["zoom"],11,3.5,16,7],"circle-stroke-color":"#fff","circle-stroke-width":1.5}});
-    if(!m.getLayer("poi-"+c.k+"-l")) m.addLayer({id:"poi-"+c.k+"-l",type:"symbol",source:"ofm","source-layer":"poi",minzoom:13.5,filter:c.f,
-      layout:{visibility:vis,"text-field":["coalesce",["get","name:ja"],["get","name"]],"text-font":["Noto Sans Regular"],"text-size":11.5,"text-offset":[0,.9],"text-anchor":"top","text-max-width":8,"text-optional":true},
+    if(!m.getLayer("poi-"+c.k+"-l")) m.addLayer({id:"poi-"+c.k+"-l",type:"symbol",source:"poiall",minzoom:12.5,filter:f,
+      layout:{visibility:vis,"text-field":["get","n"],"text-font":["Noto Sans Regular"],"text-size":11.5,"text-offset":[0,.9],"text-anchor":"top","text-max-width":8,"text-optional":true},
       paint:{"text-color":c.c,"text-halo-color":"#fff","text-halo-width":1.6}});});
   if(!m.getLayer("sun-case")) m.addLayer({id:"sun-case",type:"line",source:"sun",layout:{"line-cap":"round","line-join":"round"},paint:cas});
   if(!m.getLayer("sun-solid")) m.addLayer({id:"sun-solid",type:"line",source:"sun",filter:["==",["get","dash"],0],layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":["get","c"],"line-width":wExpr(m,0)}});
@@ -522,6 +522,62 @@ const POI_CATS=[
   {k:"shrine",t:"神社",c:"#c8322f",f:["all",["==",["get","class"],"place_of_worship"],["==",["get","subclass"],"shinto"]]},
   {k:"kofun",t:"古墳",c:"#8a5a2b",f:["all",NOTINFO,["!=",["get","class"],"place_of_worship"],KOFUN]},
   {k:"iseki",t:"遺跡・史跡",c:"#6b4fa0",f:["all",NOTINFO,["!=",["get","class"],"place_of_worship"],["!",KOFUN],["any",has("遺跡"),has("史跡"),has("跡")],["!",has("駐車")],["!",has("バス")]]}];
+/* ---- 目印の読み込み：縮尺1km程度でも出せるよう、細かい地図データ(ズーム14)を直接読んで神社・古墳・遺跡だけ取り出す ---- */
+const INFO_CLS=new Set(["information","parking","bus","railway","shop","restaurant","cafe","fast_food","lodging","toilets","school","office","post","bank","grocery","clothing_store","hairdresser"]);
+function classifyPoi(p){const n=p["name:ja"]||p.name||"";if(p.class==="place_of_worship")return p.subclass==="shinto"?"shrine":null;
+  if(!n||INFO_CLS.has(p.class))return null;
+  if(/古墳|陵|塚/.test(n))return "kofun";
+  if(/遺跡|史跡|跡/.test(n)&&!/駐車|バス/.test(n))return "iseki";return null;}
+/* 地図データ(Mapbox Vector Tile)の中から点だけを読む小さな読み取り器 */
+function mvtPoints(buf,layerName){const b=new Uint8Array(buf);let pos=0;
+  const varint=()=>{let r=0,s=0,x;do{x=b[pos++];r+=(x&0x7f)*Math.pow(2,s);s+=7;}while(x>=0x80);return r;};
+  const skip=t=>{if(t===0)varint();else if(t===1)pos+=8;else if(t===2){const l=varint();pos+=l;}else if(t===5)pos+=4;};
+  const str=(e)=>new TextDecoder().decode(b.subarray(pos,e));
+  const out=[];
+  while(pos<b.length){const tag=varint(),f=tag>>3,t=tag&7;
+    if(f===3&&t===2){const len=varint(),end=pos+len;let name="",ext=4096;const keys=[],vals=[],feats=[];
+      while(pos<end){const tg=varint(),ff=tg>>3,tt=tg&7;
+        if(ff===1&&tt===2){const l=varint();name=str(pos+l);pos+=l;}
+        else if(ff===2&&tt===2){const l=varint();feats.push([pos,pos+l]);pos+=l;}
+        else if(ff===3&&tt===2){const l=varint();keys.push(str(pos+l));pos+=l;}
+        else if(ff===4&&tt===2){const l=varint(),e=pos+l;let v=null;
+          while(pos<e){const vt=varint(),vf=vt>>3,vw=vt&7;
+            if(vf===1){const sl=varint();v=str(pos+sl);pos+=sl;}else if(vf===2){v=new DataView(b.buffer,b.byteOffset+pos,4).getFloat32(0,true);pos+=4;}
+            else if(vf===3){v=new DataView(b.buffer,b.byteOffset+pos,8).getFloat64(0,true);pos+=8;}else if(vf===7){v=!!varint();}else if(vf>=4&&vf<=6){v=varint();}else skip(vw);}
+          vals.push(v);}
+        else if(ff===5&&tt===0)ext=varint();else skip(tt);}
+      if(name===layerName){const save=pos;
+        for(const[fs,fe]of feats){pos=fs;const props={};let gx=null,gy=null,type=0;
+          while(pos<fe){const tg=varint(),ff=tg>>3,tt=tg&7;
+            if(ff===2&&tt===2){const l=varint(),e=pos+l;while(pos<e){const k=varint(),v=varint();props[keys[k]]=vals[v];}}
+            else if(ff===3&&tt===0)type=varint();
+            else if(ff===4&&tt===2){const l=varint(),e=pos+l;const cmd=varint();if((cmd&7)===1){const zz=n=>(n>>>1)^(-(n&1));gx=zz(varint());gy=zz(varint());}pos=e;}
+            else skip(tt);}
+          if(type===1&&gx!==null)out.push({x:gx/ext,y:gy/ext,props});}
+        pos=save;}}
+    else skip(t);}
+  return out;}
+let poiData={type:"FeatureCollection",features:[]};
+const poiCache=new Map();let poiTpl=null,poiTimer=null,poiSeq=0;
+async function poiTemplate(){if(poiTpl)return poiTpl;const j=await (await fetch("https://tiles.openfreemap.org/planet")).json();poiTpl=j.tiles[0];return poiTpl;}
+async function poiTile(z,x,y){const key=`${z}/${x}/${y}`;if(poiCache.has(key))return poiCache.get(key);
+  const p=(async()=>{try{const tpl=await poiTemplate();const r=await fetch(tpl.replace("{z}",z).replace("{x}",x).replace("{y}",y));let buf=new Uint8Array(await r.arrayBuffer());
+    if(buf[0]===0x1f&&buf[1]===0x8b){const ds=new DecompressionStream("gzip");const w=ds.writable.getWriter();w.write(buf);w.close();buf=new Uint8Array(await new Response(ds.readable).arrayBuffer());}
+    const n=Math.pow(2,z);
+    return mvtPoints(buf,"poi").map(f=>{const k=classifyPoi(f.props);if(!k)return null;const lon=(x+f.x)/n*360-180,lat=deg(Math.atan(Math.sinh(Math.PI*(1-2*(y+f.y)/n))));
+      return {type:"Feature",properties:{k,n:f.props["name:ja"]||f.props.name||""},geometry:{type:"Point",coordinates:[lon,lat]}};}).filter(Boolean);}catch(e){poiCache.delete(key);return [];}})();
+  poiCache.set(key,p);if(poiCache.size>600)poiCache.delete(poiCache.keys().next().value);return p;}
+function schedulePoi(){clearTimeout(poiTimer);poiTimer=setTimeout(loadPoi,250);}
+async function loadPoi(){if(!map)return;const my=++poiSeq;
+  if(map.getZoom()<12||!POI_CATS.some(c=>S.poi[c.k]!==false)){return;}
+  const bd=map.getBounds(),Z=14,n=Math.pow(2,Z);
+  const tx=lon=>Math.floor((lon+180)/360*n),ty=lat=>Math.floor((1-Math.log(Math.tan(rad(lat))+1/Math.cos(rad(lat)))/Math.PI)/2*n);
+  const x0=tx(bd.getWest()),x1=tx(bd.getEast()),y0=ty(bd.getNorth()),y1=ty(bd.getSouth());
+  if((x1-x0+1)*(y1-y0+1)>90)return;
+  const jobs=[];for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)jobs.push(poiTile(Z,x,y));
+  const res=await Promise.all(jobs);if(my!==poiSeq)return;
+  const seen=new Set();const feats=[];res.flat().forEach(f=>{const k=f.properties.n+f.geometry.coordinates.map(v=>v.toFixed(4)).join();if(!seen.has(k)){seen.add(k);feats.push(f);}});
+  poiData={type:"FeatureCollection",features:feats};const src=map.getSource("poiall");if(src)src.setData(poiData);}
 /* 線の幅：実際の地面で5m。5mが2ピクセルより細くなる縮尺では2ピクセル */
 function wExpr(m,add){const mpp0=40075016.686*Math.cos(rad(m.getCenter().lat))/512;
   const px=z=>LINE_M*Math.pow(2,z)/mpp0, zA=Math.log2(MIN_PX*mpp0/LINE_M);
@@ -574,9 +630,9 @@ async function initMap(){
   const shrinkAttr=()=>document.querySelectorAll(".maplibregl-ctrl-attrib").forEach(el=>{el.classList.remove("maplibregl-compact-show");el.removeAttribute("open");});
   map.on("load",()=>setTimeout(shrinkAttr,50));map.on("styledata",()=>setTimeout(shrinkAttr,50));
   map.touchZoomRotate.disableRotation();
-  map.on("style.load",()=>{addOverlay(map);renderMap();});
+  map.on("style.load",()=>{addOverlay(map);renderMap();schedulePoi();});
   map.on("zoomend",renderLabels);
-  map.on("moveend",()=>applyWidths(map));
+  map.on("moveend",()=>{applyWidths(map);schedulePoi();});
   map.on("move",updCoord);
   map.on("click",e=>{
     if(Date.now()-suppressClick<350) return;
@@ -1028,7 +1084,7 @@ $("baseRadios").addEventListener("change",e=>{S.base=e.target.value;save();style
 $("relief").onchange=e=>{S.relief=e.target.checked;save();renderMap();};
 $("labels").onchange=e=>{S.labels=e.target.checked;save();renderMap();};
 $("names").onchange=e=>{S.names=e.target.checked;save();renderMap();};
-$("poiChecks").addEventListener("change",e=>{const k=e.target.dataset.poi;if(!k)return;S.poi[k]=e.target.checked;save();applyPoi(map);});
+$("poiChecks").addEventListener("change",e=>{const k=e.target.dataset.poi;if(!k)return;S.poi[k]=e.target.checked;save();applyPoi(map);schedulePoi();});
 
 /* ============ JPG書き出し ============ */
 document.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>exportJPG(+b.dataset.exp,b));
