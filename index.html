@@ -323,6 +323,11 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
           <p class="help">OpenStreetMap(世界中の人が書き込む地図)に登録されている場所を、色の丸で表示します。地図をある程度拡大すると出てきます。どの地図(国土地理院・航空写真も)でも表示され、JPG保存にも入ります。古墳・遺跡・磐座は名前で見分けているので、登録のない場所は出ず、関係ない場所がまじることもあります。</p>
         </div>
         <div class="group">
+          <h2>共有する</h2>
+          <p class="help">「地図のリンクを送る」は、ピン・ライン・太陽の道をそのまま開けるリンクです。受け取った人は、リンクを開くだけで同じ地図を見て、続きを操作できます。「画像を送る」は、いまの画面を画像にして、LINEやメールなどで送ります。</p>
+          <div class="row"><button class="btn gold" id="shareLink">地図のリンクを送る</button><button class="btn" id="shareImg">画像を送る</button></div>
+        </div>
+        <div class="group">
           <h2>画像(JPG)でダウンロード</h2>
           <p class="help">いま画面に映っている範囲を、細かい解像度で書き出します。倍率が大きいほど、保存した画像を拡大しても線や文字がくっきり見えます。凡例(ラインの一覧)も画像の下に入ります。</p>
           <div class="row">
@@ -345,6 +350,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
     <div class="mapbar">
       <button class="pill" id="tapAdd" aria-pressed="true">タップでピンを立てる</button>
       <button class="pill" id="fitAll">全体を見る</button>
+      <button class="pill" id="shareBtn">共有</button>
     </div>
     <div class="buildbar" id="buildbar" hidden>
       <p>地図のピンか下の名前を、線でつなぐ順にタップ <span class="seq" id="buildSeq"></span></p>
@@ -998,7 +1004,7 @@ $("poiChecks").addEventListener("change",e=>{const k=e.target.dataset.poi;if(!k)
 /* ============ JPG書き出し ============ */
 document.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>exportJPG(+b.dataset.exp,b));
 function maxRB(){try{const c=document.createElement("canvas").getContext("webgl");return c.getParameter(c.MAX_RENDERBUFFER_SIZE)||4096;}catch(e){return 4096;}}
-async function exportJPG(want,btn){
+async function exportJPG(want,btn,share){
   const note=$("expNote");note.hidden=false;note.textContent="画像を作っています…(地図の読み込みに数秒〜十数秒かかります)";
   document.querySelectorAll("[data-exp]").forEach(b=>b.disabled=true);
   let off,host;
@@ -1049,6 +1055,10 @@ async function exportJPG(want,btn){
     const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",.92));
     const fname=`LeyLine_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${CW}x${cv.height}.jpg`;
     note.textContent=`できあがり：${CW}×${cv.height}ピクセル`;
+    if(share){const file=new File([blob],fname,{type:"image/jpeg"});
+      try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:"LeyLine Finder",text:shareText()});note.textContent="送りました。";return;}}
+      catch(e){if(e&&e.name==="AbortError"){note.textContent="送るのを取りやめました。";return;}}
+      note.textContent="この画面では画像を直接送れないため、画像を表示します。";showImage(blob,CW,cv.height);return;}
     let saved=false;
     try{const dl=await (window.claude&&window.claude.use?window.claude.use("downloads"):null);
       if(dl){await dl.save({filename:fname,data:blob});saved=true;note.textContent=`保存しました：${fname}(${CW}×${cv.height})`;}}
@@ -1068,10 +1078,49 @@ function showImage(blob,w,h){const url=URL.createObjectURL(blob);const m=$("moda
   m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="できあがった画像"><h3>できあがった画像(${w}×${h})</h3><p class="help">画像を長押し(パソコンは右クリック)して保存してください。</p><img src="${url}" alt="ラインを引いた地図"><div class="row"><button class="btn gold" id="mClose">閉じる</button></div></div>`;
   m.hidden=false;$("mClose").onclick=()=>{m.hidden=true;URL.revokeObjectURL(url);m.innerHTML="";};}
 
+/* ============ 共有 ============ */
+const APP_URL="https://askayuzuki.github.io/leyline-finder/";
+const b64e=str=>{const by=new TextEncoder().encode(str);let bin="";by.forEach(c=>bin+=String.fromCharCode(c));return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");};
+const b64d=str=>{str=str.replace(/-/g,"+").replace(/_/g,"/");const bin=atob(str);return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)));};
+function packMap(){const idx=new Map(S.pins.map((p,i)=>[p.id,i]));
+  return b64e(JSON.stringify({v:1,p:S.pins.map(p=>[p.name,+p.lat.toFixed(6),+p.lon.toFixed(6),p.where||""]),
+    l:S.lines.map(L=>[L.pins.map(id=>idx.get(id)),L.mode==="path"?1:0,L.color,L.ext||0,L.on?1:0,L.name||""]),
+    s:[S.sun.on?1:0,S.sun.base==="all"?-2:(idx.has(S.sun.base)?idx.get(S.sun.base):-1),SUN.map(([k])=>S.sun.show[k]?1:0).join("")],b:S.base}));}
+function unpackMap(str){const o=JSON.parse(b64d(str));if(!o||o.v!==1)throw 0;
+  const pins=o.p.slice(0,MAXP).map((a,i)=>({id:i+1,name:String(a[0]).normalize("NFKC"),lat:+a[1],lon:+a[2],where:a[3]||""}));
+  const lines=(o.l||[]).map((a,i)=>({id:i+1,pins:a[0].filter(k=>k>=0&&k<pins.length).map(k=>k+1),mode:a[1]?"path":"straight",color:a[2]||LINE_COLORS[i%LINE_COLORS.length],ext:+a[3]||0,on:!!a[4],name:a[5]||undefined})).filter(L=>L.pins.length>=2);
+  return {pins,lines,sun:o.s,base:o.b};}
+function shareText(){return S.pins.length?`LeyLine Finder：${S.pins.map(p=>p.name).join("・")}`:"LeyLine Finder";}
+async function shareLink(){
+  if(!S.pins.length){toast("ピンを立ててから共有してください");return;}
+  const url=APP_URL+"#m="+packMap();
+  try{if(navigator.share){await navigator.share({title:"LeyLine Finder",text:shareText(),url});return;}}catch(e){if(e&&e.name==="AbortError")return;}
+  try{await navigator.clipboard.writeText(url);toast("リンクをコピーしました。LINEやメールに貼り付けて送れます。");}
+  catch(e){const m=$("modal");m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true"><h3>地図のリンク</h3><p class="help">下のリンクを長押ししてコピーし、送りたい相手に貼り付けてください。</p><textarea readonly style="width:100%;height:120px;font-size:13px">${esc(url)}</textarea><div class="row"><button class="btn gold" id="mClose">閉じる</button></div></div>`;m.hidden=false;$("mClose").onclick=()=>{m.hidden=true;m.innerHTML="";};}}
+$("shareLink").onclick=shareLink;
+$("shareImg").onclick=()=>exportJPG(2,null,true);
+$("shareBtn").onclick=()=>{const m=$("modal");
+  m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="共有" style="max-width:420px"><h3>共有する</h3>
+    <button class="btn gold" id="sh1" style="text-align:left;padding:12px"><b>地図のリンクを送る</b><br><span style="font-weight:400;font-size:12px">受け取った人がそのまま同じ地図を開けます</span></button>
+    <button class="btn" id="sh2" style="text-align:left;padding:12px"><b>画像を送る</b><br><span style="font-size:12px;color:var(--muted)">いまの画面を画像にして送ります</span></button>
+    <button class="btn small" id="sh0" style="align-self:flex-start">閉じる</button></div>`;
+  m.hidden=false;const close=()=>{m.hidden=true;m.innerHTML="";};
+  $("sh0").onclick=close;$("sh1").onclick=()=>{close();shareLink();};$("sh2").onclick=()=>{close();showTab("map");exportJPG(2,null,true);};};
+function loadShared(){const h=location.hash;if(!h.startsWith("#m="))return false;
+  try{const o=unpackMap(h.slice(3));
+    if(S.pins.length)S.prev={pins:S.pins,lines:S.lines,base:S.sun.base};
+    S.pins=o.pins;S.lines=o.lines;S.seq.pin=o.pins.length+1;S.seq.line=o.lines.length+1;
+    if(o.sun){S.sun.on=!!o.sun[0];S.sun.base=o.sun[1]===-2?"all":(o.sun[1]>=0?o.sun[1]+1:(o.pins[0]?1:null));
+      if(o.sun[2])SUN.forEach(([k],i)=>S.sun.show[k]=o.sun[2][i]==="1");}
+    if(o.base&&["osm","positron","std","photo"].includes(o.base))S.base=o.base;
+    save();history.replaceState(null,"",location.pathname+location.search);
+    setTimeout(()=>toast(`共有された地図を開きました(${o.pins.length}か所)`),800);return true;}
+  catch(e){setTimeout(()=>toast("共有のリンクを読み取れませんでした"),800);return false;}}
 /* ============ 起動 ============ */
+const fromShare=loadShared();
 if(S.tapAdd===undefined) S.tapAdd=true;
 renderAll();
-if(window.maplibregl){initMap();}else{$("map").innerHTML='<p style="padding:20px;color:#13213a">地図を読み込めませんでした。ページを開き直してください。</p>';}
+if(window.maplibregl){initMap().then(()=>{if(fromShare)setTimeout(()=>fitAll(false),400);});}else{$("map").innerHTML='<p style="padding:20px;color:#13213a">地図を読み込めませんでした。ページを開き直してください。</p>';}
 
 </script>
 <script>if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
