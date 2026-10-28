@@ -128,9 +128,13 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
 .buildbar .chips{max-height:96px;overflow:auto}
 .buildbar p{margin:0;font-size:13px}
 .buildbar .seq{color:var(--star);font-weight:700;font-variant-numeric:tabular-nums}
+.cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;pointer-events:none;width:64px;height:64px}
+.placebar{gap:8px}
+.placebar input{width:100%}
+.placebar .step{color:var(--star);font-size:12px;letter-spacing:.1em}
 .toast{position:absolute;left:50%;top:calc(58px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:5;background:rgba(14,26,43,.95);color:var(--text);padding:9px 14px;border-radius:10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:calc(100% - 32px);text-align:center}
 
-.pm{display:flex;align-items:center;gap:5px;cursor:grab;user-select:none}
+.pm{display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
 .pm .dot{width:24px;height:24px;border-radius:50%;background:#14243b;border:2.5px solid #f0d48c;color:#fff;font:700 12px/1 var(--f-body);display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.45)}
 .pm.sel .dot{background:#f0d48c;color:#14243b;border-color:#fff}
 .pm.pick .dot{box-shadow:0 0 0 4px rgba(240,212,140,.55),0 1px 4px rgba(0,0,0,.45)}
@@ -183,7 +187,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
           <input type="search" id="q" placeholder="神社・お寺・山の名前、住所、座標" autocomplete="off">
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
-          <p class="help">全国の神社(約1万7千)・お寺(約2万)・山(約3800)の名前から探せます。「諏訪 春宮」「八幡 鎌倉」のように区切っても探せます。旧字(氣・彌・嶋など)も同じ字として扱います。地図をタップしてもピンを立てられ、ピンはドラッグで動かせます。2〜10個まで。</p>
+          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>全国の神社(約1万7千)・お寺(約2万)・山(約3800)の名前から探せます。「諏訪 春宮」「八幡 鎌倉」のように区切っても探せます。旧字(氣・彌・嶋など)も同じ字として扱います。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
           <div class="row" style="justify-content:space-between">
@@ -290,6 +294,18 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
         <button class="btn gold small" id="buildDone">完成</button>
         <button class="btn small" id="buildUndo">1つ戻す</button>
         <button class="btn small" id="buildCancel">やめる</button>
+      </div>
+    </div>
+    <div class="cross" id="cross" hidden aria-hidden="true"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="13" fill="none" stroke="#fff" stroke-width="5"/><circle cx="32" cy="32" r="13" fill="none" stroke="#d62839" stroke-width="2.5"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#d62839" stroke-width="2" stroke-linecap="round"/><circle cx="32" cy="32" r="2.5" fill="#d62839"/></svg></div>
+    <div class="buildbar placebar" id="placebar" hidden>
+      <p class="step" id="placeStep">位置を合わせる</p>
+      <input type="text" id="placeName" aria-label="場所の名前" placeholder="場所の名前">
+      <p class="help" style="margin:0">地図を動かして、十字の中心をピンを立てたい場所にぴったり合わせてください。拡大・縮小もできます。</p>
+      <p class="note" id="placeCoord" style="margin:0;font-variant-numeric:tabular-nums"></p>
+      <p style="margin:0;font-weight:700">この場所でよいですか？</p>
+      <div class="row">
+        <button class="btn gold" id="placeOk">この場所でOK（固定する）</button>
+        <button class="btn" id="placeCancel">やめる</button>
       </div>
     </div>
     <div class="toast" id="toast" hidden></div>
@@ -456,11 +472,12 @@ async function initMap(){
   map.on("style.load",()=>{addOverlay(map);renderMap();});
   map.on("zoomend",renderLabels);
   map.on("moveend",()=>applyWidths(map));
+  map.on("move",updCoord);
   map.on("click",e=>{
     if(Date.now()-suppressClick<350) return;
-    if(build) return;
+    if(build||place) return;
     if(!S.tapAdd) return;
-    addPin({lat:e.lngLat.lat,lon:e.lngLat.lng,name:null});
+    startPlace({lat:e.lngLat.lat,lon:e.lngLat.lng,name:"",zoom:Math.max(map.getZoom()+2,15)});
   });
   fitAll(false);
 }
@@ -478,10 +495,7 @@ function renderPins(){
     if(!mk){const el=document.createElement("div");el.className="pm";el.tabIndex=0;el.setAttribute("role","button");
       el.addEventListener("click",ev=>{ev.stopPropagation();suppressClick=Date.now();pinTapped(p.id);});
       el.addEventListener("keydown",ev=>{if(ev.key==="Enter"){pinTapped(p.id);}});
-      mk=new maplibregl.Marker({element:el,anchor:"left",offset:[-12,0],draggable:true}).setLngLat([p.lon,p.lat]).addTo(map);
-      mk.on("dragstart",()=>{suppressClick=Date.now();});
-      mk.on("drag",()=>{const ll=mk.getLngLat();const q=pinById(p.id);if(q){q.lat=ll.lat;q.lon=ll.lng;}const d=overlayData();map.getSource("lines").setData(d.lines);map.getSource("sun").setData(d.sun);});
-      mk.on("dragend",()=>{suppressClick=Date.now();save();renderAll();});
+      mk=new maplibregl.Marker({element:el,anchor:"left",offset:[-12,0],draggable:false}).setLngLat([p.lon,p.lat]).addTo(map);
       pinMarkers[p.id]=mk;}
     mk.setLngLat([p.lon,p.lat]);
     const el=mk.getElement();
@@ -515,7 +529,6 @@ function addPin({lat,lon,name}){
   const id=S.seq.pin++; const p={id,lat,lon,name:name||`ピン${S.pins.length+1}`};
   S.pins.push(p); if(S.sun.base==null||!pinById(S.sun.base)) S.sun.base=id;
   selPin=id; save(); renderAll();
-  toast(`${S.pins.length}番目のピンを立てました${name?"：「"+name+"」":"。名前はパネルで変えられます"}`);
   return p;}
 function removePin(id){
   S.pins=S.pins.filter(p=>p.id!==id);
@@ -523,6 +536,7 @@ function removePin(id){
   if(S.sun.base===id) S.sun.base=S.pins[0]?S.pins[0].id:null;
   if(selPin===id) selPin=null; save(); renderAll();}
 function pinTapped(id){
+  if(place) return;
   if(build){const i=build.indexOf(id); if(i>=0) build.splice(i,1); else build.push(id); renderBuild(); renderPins(); return;}
   selPin=id; showTab("pins"); renderAll();
   const li=document.querySelector(`[data-pin="${id}"]`); if(li) li.scrollIntoView({block:"nearest",behavior:"smooth"});
@@ -562,7 +576,7 @@ function renderPinList(){
     <span class="num">${i+1}</span>
     <div style="min-width:0"><input type="text" id="pn-${p.id}" value="${esc(p.name)}" aria-label="ピン${i+1}の名前" data-rename="${p.id}">
     <div class="coord">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div></div>
-    <div class="acts"><button class="btn small" data-go="${p.id}" title="地図で見る">見る</button><button class="btn small danger" data-del="${p.id}" aria-label="ピン${i+1}を消す">消す</button></div></li>`).join("");}
+    <div class="acts"><button class="btn small" data-go="${p.id}" title="地図で見る">見る</button><button class="btn small" data-fix="${p.id}" title="位置を合わせ直す">位置を直す</button><button class="btn small danger" data-del="${p.id}" aria-label="ピン${i+1}を消す">消す</button></div></li>`).join("");}
 function renderPinChipsForBuild(){/* ライン画面のピン選び(作成中のみ) */
   const host=$("buildChips"); if(!host) return;
   host.innerHTML=S.pins.map((p,i)=>{const k=build?build.indexOf(p.id):-1;return `<button class="chip" aria-pressed="${k>=0}" data-pick="${p.id}">${k>=0?`<span class="o">${k+1}.</span>`:""}${i+1} ${esc(p.name)}</button>`}).join("");}
@@ -655,8 +669,8 @@ function showResults(arr){lastResults=arr;$("results").innerHTML=arr.map((r,i)=>
 let qT;$("q").addEventListener("input",e=>{clearTimeout(qT);qT=setTimeout(()=>doSearch(e.target.value),250);});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doSearch(e.target.value);}});
 $("results").addEventListener("click",e=>{const b=e.target.closest("[data-res]");if(!b)return;const r=lastResults[+b.dataset.res];
-  const np=addPin({lat:r.lat,lon:r.lon,name:r.sub==="座標"?null:r.name});if(np){map.easeTo({center:[r.lon,r.lat],zoom:Math.max(map.getZoom(),11)});}
-  $("results").innerHTML="";$("q").value="";});
+  $("results").innerHTML="";
+  startPlace({lat:r.lat,lon:r.lon,name:r.sub==="座標"?"":r.name,zoom:17});});
 
 /* ============ イベント ============ */
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showTab(b.dataset.tab);$("panel").classList.remove("min");syncChev();}});
@@ -671,8 +685,34 @@ $("clearAll").onclick=function(){
 $("pinlist").addEventListener("change",e=>{const id=+e.target.dataset.rename;if(!id)return;const p=pinById(id);if(p){p.name=e.target.value.trim()||p.name;save();renderAll();}});
 $("pinlist").addEventListener("click",e=>{const g=e.target.closest("[data-go]"),d=e.target.closest("[data-del]");
   if(g){const p=pinById(+g.dataset.go);selPin=p.id;map.easeTo({center:[p.lon,p.lat],zoom:Math.max(map.getZoom(),12)});renderAll();}
-  if(d){removePin(+d.dataset.del);}});
+  if(d){removePin(+d.dataset.del);}
+  const fx=e.target.closest("[data-fix]");if(fx){const p=pinById(+fx.dataset.fix);startPlace({lat:p.lat,lon:p.lon,name:p.name,zoom:Math.max(map.getZoom(),17),editId:p.id});}});
 $("newLine").onclick=startBuild;
+/* ---- 位置合わせ：検索→位置を合わせる→確認→固定→次へ ---- */
+let place=null;
+function updCoord(){if(place){const c=map.getCenter();$("placeCoord").textContent=`十字の位置：${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;}}
+function startPlace(o){
+  if(!o.editId&&S.pins.length>=MAXP){toast("ピンは10個までです。いらないピンを消してから立ててください。");return;}
+  if(build) endBuild(false);
+  place=o;
+  $("placeStep").textContent=o.editId?`${pinNo(o.editId)}番のピンの位置を直す`:`${S.pins.length+1}番目のピンを立てる`;
+  $("placeName").value=o.name||"";
+  $("cross").hidden=false;$("placebar").hidden=false;document.querySelector(".mapbar").hidden=true;
+  if(window.innerWidth<900){$("panel").classList.add("min");syncChev();}
+  setTimeout(()=>{map.resize();map.jumpTo({center:[o.lon,o.lat],zoom:Math.min(18,o.zoom||16)});updCoord();},60);
+  if(o.editId&&pinMarkers[o.editId])pinMarkers[o.editId].getElement().style.opacity=".35";
+}
+function endPlace(){place=null;$("cross").hidden=true;$("placebar").hidden=true;document.querySelector(".mapbar").hidden=false;
+  Object.values(pinMarkers).forEach(m=>m.getElement().style.opacity="");
+  $("panel").classList.remove("min");syncChev();setTimeout(()=>map.resize(),280);}
+$("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim();
+  if(place.editId){const p=pinById(place.editId);p.lat=c.lat;p.lon=c.lng;if(nm)p.name=nm;clearExample();save();renderAll();toast(`${pinNo(p.id)}番のピンを新しい位置で固定しました`);}
+  else{const p=addPin({lat:c.lat,lon:c.lng,name:nm||null});if(p)toast(`${S.pins.length}番目のピン「${p.name}」を固定しました。次の場所を探せます。`);}
+  endPlace();showTab("pins");$("q").value="";
+  if(S.pins.length>=2)setTimeout(()=>fitAll(),300);
+  if(S.pins.length<MAXP)setTimeout(()=>{try{$("q").focus({preventScroll:true});}catch(e){}},350);};
+$("placeCancel").onclick=()=>{const o=place;endPlace();if(o&&!o.editId&&S.pins.length>=2)setTimeout(()=>fitAll(),300);};
+$("placeName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("placeOk").click();}});
 $("buildDone").onclick=()=>endBuild(true);$("buildCancel").onclick=()=>endBuild(false);
 $("buildChips").addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b)pinTapped(+b.dataset.pick);});
 $("buildUndo").onclick=()=>{if(build&&build.length){build.pop();renderBuild();renderPins();}};
