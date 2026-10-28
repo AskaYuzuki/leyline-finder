@@ -216,6 +216,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
           </div>
           <ol class="pinlist" id="pinlist"></ol>
           <p class="help" id="pinEmpty" hidden>まだピンがありません。地図をタップするか、上から場所を選んでください。</p>
+          <button class="btn small" id="restorePrev" hidden style="align-self:flex-start"></button>
         </div>
       </section>
 
@@ -388,6 +389,9 @@ function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&
     if(s.example){s.pins=[];s.lines=[];s.sun.base=null;s.example=false;}
     if(!s.v2){s.v2=1;s.sun.show={sr:true,ss:true,er:true,es:true,wr:true,ws:true};s.sun.on=true;if(s.base==="pale")s.base="osm";}
     if(!["osm","positron","std","photo"].includes(s.base))s.base="osm";
+    // 開くたびに白紙から。前回のピンは「呼び出す」ボタンで戻せるように取っておく
+    if(s.pins.length) s.prev={pins:s.pins,lines:s.lines,base:s.sun.base};
+    s.pins=[];s.lines=[];s.sun.base=null;
     return s;}}catch(e){}const e=exampleState();e.v2=1;return e;}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 S=load();
@@ -606,6 +610,7 @@ function showTab(t){document.querySelectorAll(".tabs button").forEach(b=>b.setAt
 function renderPinList(){
   $("pinCount").textContent=`${S.pins.length}/${MAXP}`;
   $("pinEmpty").hidden=S.pins.length>0;
+  const rp=$("restorePrev");rp.hidden=!(S.prev&&S.prev.pins.length&&!S.pins.length);if(!rp.hidden)rp.textContent=`前回のピン（${S.prev.pins.length}か所）を呼び出す`;
   $("pinlist").innerHTML=S.pins.map((p,i)=>`<li class="pinitem${selPin===p.id?" sel":""}" data-pin="${p.id}">
     <span class="num">${i+1}</span>
     <div style="min-width:0"><div class="pname">${esc(p.name)}</div>
@@ -732,6 +737,8 @@ $("pinlist").addEventListener("click",e=>{const g=e.target.closest("[data-go]"),
   if(d){removePin(+d.dataset.del);}
   const fx=e.target.closest("[data-fix]");if(fx){const p=pinById(+fx.dataset.fix);startPlace({lat:p.lat,lon:p.lon,name:p.name,zoom:Math.max(map.getZoom(),17),editId:p.id});}});
 $("newLine").onclick=startBuild;
+$("restorePrev").onclick=()=>{const p=S.prev;if(!p)return;S.pins=p.pins;S.lines=p.lines||[];S.sun.base=p.base;
+  S.seq.pin=Math.max(S.seq.pin,...S.pins.map(x=>x.id+1));S.seq.line=Math.max(S.seq.line,...S.lines.map(x=>x.id+1),1);save();renderAll();fitAll();};
 /* ---- 位置合わせ：検索→位置を合わせる→確認→固定→次へ ---- */
 let place=null;
 function updCoord(){if(place){const c=map.getCenter();$("placeCoord").textContent=`十字の位置：${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;}}
