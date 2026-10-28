@@ -41,7 +41,9 @@ input,select,textarea{font-size:16px!important}
 #panel{display:flex;flex-direction:column;background:var(--night);border-top:1px solid var(--night-3);height:40%;min-height:0;transition:height .25s ease}
 #panel.min{height:auto;position:absolute;left:0;right:0;bottom:0;z-index:6;background:rgba(14,26,43,.95);backdrop-filter:blur(6px)}
 :root{padding-bottom:0!important}
-#app{position:relative}
+#app{position:fixed;left:0;right:0;bottom:0;top:env(safe-area-inset-top,0px);height:auto!important}
+#app.placing #panel{display:none}
+#app.placing .placebar{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 #panel.min{padding-bottom:env(safe-area-inset-bottom,0px)}
 #app.pmin .maplibregl-ctrl-bottom-right,#app.pmin .maplibregl-ctrl-bottom-left{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
 #panel.min .body{display:none}
@@ -1103,7 +1105,7 @@ function startPlace(o){
   $("placeName").value=o.name||"";$("placeName").readOnly=!!o.name;$("placeName").classList.toggle("ro",!!o.name);
   $("placeName").placeholder="場所の名前を入れてください";
   setBaseBtn(!!(o.editId&&S.sun.on&&S.sun.base===o.editId));
-  $("cross").hidden=false;$("placebar").hidden=false;document.querySelector(".mapbar").hidden=true;
+  $("app").classList.add("placing");$("cross").hidden=false;$("placebar").hidden=false;document.querySelector(".mapbar").hidden=true;
   if(window.innerWidth<900){$("panel").classList.add("min");syncChev();}
   setTimeout(()=>{map.resize();const bh=$("placebar").offsetHeight+24;
     map.setPadding({top:0,left:0,right:0,bottom:bh});$("cross").style.top=`calc((100% - ${bh}px) / 2)`;
@@ -1112,7 +1114,7 @@ function startPlace(o){
 }
 let satTemp=false;
 function setSat(on){satTemp=on;$("placeSat").textContent=on?"地図に戻す":"航空写真で見る";styleFor(on?"photo":S.base).then(st=>map.setStyle(st,{diff:false}));}
-function endPlace(){if(satTemp)setSat(false);place=null;map.setPadding({top:0,left:0,right:0,bottom:0});$("cross").hidden=true;$("placebar").hidden=true;document.querySelector(".mapbar").hidden=false;
+function endPlace(){$("app").classList.remove("placing");if(satTemp)setSat(false);place=null;map.setPadding({top:0,left:0,right:0,bottom:0});$("cross").hidden=true;$("placebar").hidden=true;document.querySelector(".mapbar").hidden=false;
   Object.values(pinMarkers).forEach(m=>m.getElement().style.opacity="");
   $("panel").classList.remove("min");syncChev();setTimeout(()=>map.resize(),280);}
 $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim();
