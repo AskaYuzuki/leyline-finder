@@ -83,10 +83,12 @@ input[type=search]{width:100%}
 .srow .btn{padding:4px 10px;font-size:15px}
 .results{display:flex;flex-direction:column;border:1px solid var(--night-3);border-radius:8px;overflow:auto;max-height:320px}
 .results:empty{display:none}
-.results button{all:unset;cursor:pointer;padding:8px 10px;border-top:1px solid var(--night-3);display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.results button{all:unset;box-sizing:border-box;width:100%;cursor:pointer;padding:8px 10px;border-top:1px solid var(--night-3);display:grid;grid-template-columns:22px minmax(0,1fr);column-gap:8px;row-gap:2px;font-size:14px;align-items:start}
+.results .rn{width:20px;height:20px;border-radius:50%;background:#2f80ed;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;grid-row:span 2;margin-top:1px}
+.results .rt{overflow-wrap:anywhere;line-height:1.4}
 .results button:first-child{border-top:0}
 .results button:hover,.results button:focus-visible{background:var(--night-2)}
-.results small{color:var(--muted);white-space:nowrap}
+.results small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .note{font-size:12px;color:var(--muted)}
 
 .pinlist{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
@@ -242,7 +244,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
           <div class="georow"><small>見つからないときは</small><button class="btn small" id="geoBtn">geocodingで探す</button></div>
-          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>見つからないときは「geocodingで探す」を押すと、geocoding.jp(Googleマップの検索結果)で場所を探します。GoogleマップのURLを検索欄に貼り付けても、その場所が開きます。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
+          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>見つからないときは「geocodingで探す」を押すと、geocoding.jp(Googleマップの検索結果)で場所を探します。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
           <div class="row" style="justify-content:space-between">
@@ -309,6 +311,12 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
       <!-- 地図・保存 -->
       <section class="tab" id="tab-map" hidden>
         <div class="group">
+          <h2>マイ地図</h2>
+          <p class="help">いまのピン・ライン・太陽の道を、名前を付けて保存しておけます。あとで一覧から開けます(このiPhoneの中に保存されます)。</p>
+          <div class="srow"><div class="qwrap"><input type="text" id="mapName" placeholder="例 御来光の道" maxlength="40"></div><button class="btn gold" id="saveMap" style="font-size:13px">保存</button></div>
+          <div id="myMaps" class="found"></div>
+        </div>
+        <div class="group">
           <h2>地図の種類</h2>
           <div class="radios" id="baseRadios">
             <label><input type="radio" name="base" value="osm"> 標準</label>
@@ -341,6 +349,10 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
             <button class="btn" data-exp="4">4倍で保存</button>
           </div>
           <p class="note" id="expNote" hidden></p>
+        </div>
+        <div class="group">
+          <h2>使い方</h2>
+          <button class="btn small" id="showGuide" style="align-self:flex-start">使い方を見る</button>
         </div>
         <div class="group">
           <h2>地図の出典</h2>
@@ -499,6 +511,9 @@ function addOverlay(m){
   if(!m.getLayer("relief")) m.addLayer({id:"relief",type:"raster",source:"relief",paint:{"raster-opacity":.32},layout:{visibility:S.relief?"visible":"none"}});
   for(const id of ["sun","lines"]) if(!m.getSource(id)) m.addSource(id,{type:"geojson",data:{type:"FeatureCollection",features:[]}});
   const cas={"line-color":"#ffffff","line-opacity":.85,"line-width":wExpr(m,2)};
+  if(!m.getSource("cands")) m.addSource("cands",{type:"geojson",data:candData});
+  if(!m.getLayer("cands")) m.addLayer({id:"cands",type:"circle",source:"cands",paint:{"circle-color":"#2f80ed","circle-radius":11,"circle-stroke-color":"#fff","circle-stroke-width":2}});
+  if(!m.getLayer("cands-n")) m.addLayer({id:"cands-n",type:"symbol",source:"cands",layout:{"text-field":["to-string",["get","i"]],"text-font":["Noto Sans Bold"],"text-size":12,"text-allow-overlap":true,"text-ignore-placement":true},paint:{"text-color":"#fff"}});
   if(!m.getSource("poiall")) m.addSource("poiall",{type:"geojson",data:poiData,attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © OpenStreetMap'});
   POI_CATS.forEach(c=>{const vis=(S.poi&&S.poi[c.k]===false)?"none":"visible",f=["==",["get","k"],c.k];
     if(!m.getLayer("poi-"+c.k)) m.addLayer({id:"poi-"+c.k,type:"circle",source:"poiall",filter:f,layout:{visibility:vis},
@@ -521,6 +536,13 @@ const POI_CATS=[
   {k:"shrine",t:"神社",c:"#c8322f",f:["all",["==",["get","class"],"place_of_worship"],["==",["get","subclass"],"shinto"]]},
   {k:"kofun",t:"古墳",c:"#8a5a2b",f:["all",NOTINFO,["!=",["get","class"],"place_of_worship"],KOFUN]},
   {k:"iseki",t:"遺跡・史跡",c:"#6b4fa0",f:["all",NOTINFO,["!=",["get","class"],"place_of_worship"],["!",KOFUN],["any",has("遺跡"),has("史跡"),has("跡")],["!",has("駐車")],["!",has("バス")]]}];
+/* ---- 検索候補を地図にも青い番号の丸で出す(選びやすくする) ---- */
+let candData={type:"FeatureCollection",features:[]};
+function showCands(arr){candData={type:"FeatureCollection",features:(arr||[]).slice(0,30).map((r,i)=>({type:"Feature",properties:{i:i+1},geometry:{type:"Point",coordinates:[r.lon,r.lat]}}))};
+  if(map&&map.getSource("cands"))map.getSource("cands").setData(candData);
+  if(map&&arr&&arr.length&&!place){const b=new maplibregl.LngLatBounds();arr.slice(0,30).forEach(r=>b.extend([r.lon,r.lat]));
+    map.fitBounds(b,{padding:{top:70,bottom:40,left:40,right:60},maxZoom:15,duration:500});}}
+const clearCands=()=>showCands([]);
 /* ---- 目印の読み込み：縮尺1km程度でも出せるよう、細かい地図データ(ズーム14)を直接読んで神社・古墳・遺跡だけ取り出す ---- */
 const INFO_CLS=new Set(["information","parking","bus","railway","shop","restaurant","cafe","fast_food","lodging","toilets","school","office","post","bank","grocery","clothing_store","hairdresser"]);
 function classifyPoi(p){const n=p["name:ja"]||p.name||"";if(p.class==="place_of_worship")return p.subclass==="shinto"?"shrine":null;
@@ -630,6 +652,9 @@ async function initMap(){
   map=new maplibregl.Map({container:"map",style:await styleFor(S.base),center:[136.5,35.4],zoom:5.2,minZoom:2,maxZoom:18,
     attributionControl:{compact:true},localIdeographFontFamily:"'Hiragino Sans','Noto Sans CJK JP',sans-serif",pitchWithRotate:false,dragRotate:false});
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"top-right");
+  // 現在地(神社めぐりの現地で、自分がどこにいるかを地図に出す)
+  if(navigator.geolocation){const geo=new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},trackUserLocation:true,showAccuracyCircle:true});
+    map.addControl(geo,"top-right");geo.on("error",()=>toast("現在地を取得できませんでした。iPhoneの設定で位置情報を許可してください"));}
   map.addControl(new maplibregl.ScaleControl({unit:"metric"}),"bottom-right");
   // 地図の出典は小さな「ⓘ」だけにする(押すと出典が開く)
   const shrinkAttr=()=>document.querySelectorAll(".maplibregl-ctrl-attrib").forEach(el=>{el.classList.remove("maplibregl-compact-show");el.removeAttribute("open");});
@@ -639,6 +664,10 @@ async function initMap(){
   map.on("zoomend",renderLabels);
   map.on("moveend",()=>{applyWidths(map);schedulePoi();});
   map.on("move",updCoord);
+  map.on("click","cands",e=>{const i=e.features[0].properties.i-1;const r=lastResults[i];if(!r)return;suppressClick=Date.now();
+    searchSeq++;clearTimeout(qT);$("results").innerHTML="";clearCands();
+    startPlace({lat:r.lat,lon:r.lon,name:r.sub==="座標"?"":r.name,where:r.sub==="座標"?"":(r.sub||"").split("・")[0],zoom:17});});
+  map.on("mouseenter","cands",()=>map.getCanvas().style.cursor="pointer");map.on("mouseleave","cands",()=>map.getCanvas().style.cursor="");
   map.on("click",e=>{
     if(Date.now()-suppressClick<350) return;
     if(build||place) return;
@@ -816,7 +845,7 @@ function renderSun(){
 }
 function renderPoiChecks(){$("poiChecks").innerHTML=POI_CATS.map(c=>`<label class="check"><input type="checkbox" data-poi="${c.k}" ${S.poi[c.k]!==false?"checked":""}> <span class="dotk" style="background:${c.c}"></span>${c.t}</label>`).join("");}
 function applyPoi(m){POI_CATS.forEach(c=>["","-l"].forEach(x=>{if(m.getLayer("poi-"+c.k+x))m.setLayoutProperty("poi-"+c.k+x,"visibility",S.poi[c.k]!==false?"visible":"none");}));}
-function renderMapTab(){renderPoiChecks();document.querySelectorAll('input[name=base]').forEach(r=>r.checked=r.value===S.base);$("relief").checked=S.relief;$("labels").checked=S.labels;$("names").checked=S.names;$("tol").value=S.tol;}
+function renderMapTab(){renderPoiChecks();renderMyMaps();document.querySelectorAll('input[name=base]').forEach(r=>r.checked=r.value===S.base);$("relief").checked=S.relief;$("labels").checked=S.labels;$("names").checked=S.names;$("tol").value=S.tol;}
 function renderAll(){[renderPinList,renderLines,renderSun,renderMapTab,renderMap].forEach(f=>{try{f();}catch(e){console.error(e);}});
   $("tapAdd").setAttribute("aria-pressed",String(!!S.tapAdd));}
 
@@ -869,15 +898,11 @@ async function wiki(q){try{const r=await fetch(`https://ja.wikipedia.org/w/api.p
 let searchSeq=0,lastResults=[];
 async function doSearch(q){
   const my=++searchSeq;q=q.trim();const note=$("searchNote");note.hidden=true;
-  if(!q){$("results").innerHTML="";return;}
-  const gurl=(q.match(/https:\/\/(?:maps\.app\.goo\.gl|goo\.gl|g\.co|(?:www\.)?google\.(?:com|co\.jp)\/maps)[^\s]*/)||[])[0];
-  if(gurl&&!parseCoord(q)){$("results").innerHTML=`<div class="note" style="padding:8px 10px">GoogleマップのURLから場所を調べています…</div>`;
-    const g=await expandGoogle(gurl);if(my!==searchSeq)return;
-    if(g){searchSeq++;$("results").innerHTML="";$("q").value="";syncClr();startPlace({lat:g.lat,lon:g.lng,name:(g.name||"").normalize("NFKC"),zoom:18});return;}}
+  if(!q){$("results").innerHTML="";clearCands();return;}
   const sh=parseShared(q);
   if(sh&&sh.addr){$("results").innerHTML=`<div class="note" style="padding:8px 10px">住所から場所を探しています…</div>`;
     const g=await gsiAddr(sh.addr);if(my!==searchSeq)return;
-    if(g&&g.length){searchSeq++;$("results").innerHTML="";$("q").value="";syncClr();
+    if(g&&g.length){searchSeq++;$("results").innerHTML="";clearCands();$("q").value="";syncClr();
       startPlace({lat:g[0].lat,lon:g[0].lon,name:sh.name||g[0].name,zoom:18});toast("住所の位置に移動しました。十字を正確な場所に合わせてください");return;}
     if(sh.name){q=sh.name;}}
   else if(sh&&sh.name&&!parseCoord(q)){q=sh.name;}
@@ -918,18 +943,20 @@ async function doSearch(q){
   cand.sort((a,b)=>b.sc-a.sc);
   const out=[];for(const x of cand){if(toks.length>1&&x.sc<3)continue;if(!x.hint&&out.some(o=>!o.hint&&o.name===x.name&&near(o,x,.3)))continue;out.push(x);if(out.length>=30)break;}
   showResults(out.map(x=>({name:x.name,lat:x.lat,lon:x.lon,sub:[x.where,x.kind].filter(Boolean).join("・")})));
-  if(!out.length){note.hidden=false;note.textContent=failed?"この画面ではネット検索が使えません。iPhoneのアプリ(askayuzuki.github.io/leyline-finder)から探すか、下の「Googleマップで探す」を使ってください。":"見つかりませんでした。言葉を短くするか、下の「Googleマップで探す」を使ってください。";}
+  if(!out.length){note.hidden=false;note.textContent=failed?"この画面ではネット検索が使えません。iPhoneのアプリ(askayuzuki.github.io/leyline-finder)から探すか、下の「geocodingで探す」を押してください。":"見つかりませんでした。言葉を短くするか、下の「geocodingで探す」を押してください。";}
 }
-function showResults(arr){arr.forEach(r=>{r.name=(r.name||"").normalize("NFKC");r.sub=(r.sub||"").normalize("NFKC");});lastResults=arr;$("results").innerHTML=arr.map((r,i)=>`<button data-res="${i}"><span>${esc(r.name)}</span><small>${esc(r.sub||"")}</small></button>`).join("");}
+function showResults(arr){arr.forEach(r=>{r.name=(r.name||"").normalize("NFKC");r.sub=(r.sub||"").normalize("NFKC");});lastResults=arr;
+  $("results").innerHTML=arr.map((r,i)=>`<button data-res="${i}"><span class="rn">${i+1}</span><span class="rt">${esc(r.name)}</span><small>${esc(r.sub||"")}</small></button>`).join("");
+  showCands(arr);}
 function syncClr(){$("qClr").hidden=!$("q").value;}
-$("qClr").onclick=()=>{$("q").value="";syncClr();searchSeq++;$("results").innerHTML="";$("searchNote").hidden=true;$("q").focus();};
-let qT;$("q").addEventListener("input",e=>{syncClr();clearTimeout(qT);if(!e.target.value.trim()){$("results").innerHTML="";$("searchNote").hidden=true;}});
+$("qClr").onclick=()=>{$("q").value="";syncClr();searchSeq++;$("results").innerHTML="";clearCands();$("searchNote").hidden=true;$("q").focus();};
+let qT;$("q").addEventListener("input",e=>{syncClr();clearTimeout(qT);if(!e.target.value.trim()){$("results").innerHTML="";clearCands();$("searchNote").hidden=true;}});
 $("qGo").onclick=()=>{clearTimeout(qT);$("q").blur();doSearch($("q").value);};
 $("q").addEventListener("paste",e=>{const t=(e.clipboardData||window.clipboardData)?.getData("text");if(!t)return;
-  if(/\n/.test(t)||/(google|goo\.gl)/i.test(t)){e.preventDefault();$("q").value=t.replace(/\s*\n\s*/g," ");syncClr();clearTimeout(qT);doSearch(t);}});
+  if(/\n/.test(t)){e.preventDefault();$("q").value=t.replace(/\s*\n\s*/g," ");syncClr();clearTimeout(qT);doSearch(t);}});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doSearch(e.target.value);}});
 $("results").addEventListener("click",e=>{const b=e.target.closest("[data-res]");if(!b)return;const r=lastResults[+b.dataset.res];
-  searchSeq++;clearTimeout(qT);$("results").innerHTML="";
+  searchSeq++;clearTimeout(qT);$("results").innerHTML="";clearCands();
   startPlace({lat:r.lat,lon:r.lon,name:r.sub==="座標"?"":r.name,where:r.sub==="座標"?"":(r.sub||"").split("・")[0],zoom:17});});
 
 /* ============ イベント ============ */
@@ -939,8 +966,9 @@ $("collapse").onclick=()=>{$("panel").classList.toggle("min");syncChev();setTime
 $("panel").addEventListener("transitionend",()=>map&&map.resize());
 /* パネルの上の部分(つまみ・タイトル・タブ)を下へスワイプで最小、上へスワイプで元の大きさ */
 (()=>{const panel=$("panel");let y0=null,x0=0,fromBody=false;
-  panel.addEventListener("touchstart",e=>{if(window.innerWidth>=900)return;const t=e.touches[0];const body=e.target.closest(".body");
-    fromBody=!!body;if(body&&body.scrollTop>0){y0=null;return;}y0=t.clientY;x0=t.clientX;},{passive:true});
+  // つまみ・タイトル・タブの部分だけで反応する(検索結果などのスクロールとまちがえないように)
+  panel.addEventListener("touchstart",e=>{if(window.innerWidth>=900)return;const t=e.touches[0];
+    if(!e.target.closest(".grab,.brand,.tabs")){y0=null;return;}y0=t.clientY;x0=t.clientX;},{passive:true});
   panel.addEventListener("touchend",e=>{if(y0==null)return;const t=e.changedTouches[0],dy=t.clientY-y0,dx=Math.abs(t.clientX-x0);y0=null;
     if(dx>Math.abs(dy))return;
     if(dy>50&&!panel.classList.contains("min")){panel.classList.add("min");syncChev();setTimeout(()=>map.resize(),280);}
@@ -961,6 +989,24 @@ $("pinlist").addEventListener("click",e=>{
     removePin(id);toastUndo(`「${nm}」を削除しました`,()=>{const o=JSON.parse(snap);S.pins=o.pins;S.lines=o.lines;S.sun.base=o.base;save();renderAll();});}
   const fx=e.target.closest("[data-fix]");if(fx){const p=pinById(+fx.dataset.fix);startPlace({lat:p.lat,lon:p.lon,name:p.name,zoom:Math.max(map.getZoom(),17),editId:p.id});}});
 $("newLine").onclick=startBuild;
+/* ---- マイ地図：名前を付けて保存・一覧から開く ---- */
+function snapshot(){return JSON.parse(JSON.stringify({pins:S.pins,lines:S.lines,sun:S.sun,nsew:S.nsew,base:S.base}));}
+function renderMyMaps(){const L=S.saved||[];
+  $("myMaps").innerHTML=L.length?L.map((m,i)=>`<div class="item"><span><b>${esc(m.name)}</b><br><small class="note">${m.pins.length}か所・${esc(m.date)}</small></span><span class="row" style="flex-wrap:nowrap"><button class="btn small gold" data-mo="${i}">開く</button><button class="btn small danger" data-md="${i}">削除</button></span></div>`).join(""):`<p class="help">まだ保存した地図はありません。</p>`;}
+$("saveMap").onclick=()=>{if(!S.pins.length){toast("ピンを立ててから保存してください");return;}
+  const nm=($("mapName").value.trim()||S.pins.map(p=>p.name).slice(0,2).join("・")).normalize("NFKC");
+  const d=new Date(),date=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  S.saved=S.saved||[];const k=S.saved.findIndex(m=>m.name===nm);const item={name:nm,date,...snapshot()};
+  if(k>=0)S.saved[k]=item;else S.saved.unshift(item);if(S.saved.length>50)S.saved.length=50;
+  save();renderMyMaps();$("mapName").value="";toast(k>=0?`「${nm}」を上書き保存しました`:`「${nm}」を保存しました`);};
+$("myMaps").addEventListener("click",e=>{const o=e.target.closest("[data-mo]"),d=e.target.closest("[data-md]");
+  if(o){const m=S.saved[+o.dataset.mo];const before=JSON.stringify(snapshot());
+    S.pins=JSON.parse(JSON.stringify(m.pins));S.lines=JSON.parse(JSON.stringify(m.lines));S.sun=JSON.parse(JSON.stringify(m.sun));S.nsew=m.nsew;
+    S.seq.pin=Math.max(1,...S.pins.map(p=>p.id+1));S.seq.line=Math.max(1,...S.lines.map(l=>l.id+1));
+    if(m.base&&m.base!==S.base){S.base=m.base;styleFor(S.base).then(st=>map.setStyle(st,{diff:false}));}
+    save();renderAll();fitAll();toastUndo(`「${m.name}」を開きました`,()=>{const b=JSON.parse(before);S.pins=b.pins;S.lines=b.lines;S.sun=b.sun;S.nsew=b.nsew;save();renderAll();fitAll();});}
+  if(d){const i=+d.dataset.md,m=S.saved[i];if(!d.dataset.armed){d.dataset.armed="1";d.textContent="本当に削除";return;}
+    S.saved.splice(i,1);save();renderMyMaps();toast(`「${m.name}」を削除しました`);}});
 /* ---- ピンの並び順の入れ替え(Googleマップの経由地のように) ---- */
 function applyOrder(ids){
   const old=S.pins.map(p=>p.id);if(ids.join()===old.join())return;
@@ -1001,7 +1047,7 @@ $("geoBtn").onclick=async()=>{const q=$("q").value.trim().normalize("NFKC");
   const wait=10000-(Date.now()-geoLast);if(wait>0){toast(`geocodingは10秒に1回までです。あと${Math.ceil(wait/1000)}秒お待ちください`);return;}
   geoLast=Date.now();const b=$("geoBtn");b.disabled=true;b.textContent="さがしています…";
   try{const r=await fetch(`${RELAY}/geo?q=${encodeURIComponent(q)}`);const j=await r.json();
-    if(j.ok){searchSeq++;$("results").innerHTML="";$("searchNote").hidden=true;
+    if(j.ok){searchSeq++;$("results").innerHTML="";clearCands();$("searchNote").hidden=true;
       const where=(j.place||"").replace(/〒?\d{3}-?\d{4}/,"").trim();
       startPlace({lat:j.lat,lon:j.lng,name:q,where:where.split(" ")[0]||"",zoom:18});toast("geocodingで見つかった場所です。十字を正確な位置に合わせてください");}
     else{$("searchNote").hidden=false;$("searchNote").textContent="geocodingでも見つかりませんでした。言葉を変えて試してください。";}}
@@ -1037,7 +1083,7 @@ $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim()
   const wantBase=$("placeBase").getAttribute("aria-pressed")==="true";
   if(place.editId){const p=pinById(place.editId);p.lat=c.lat;p.lon=c.lng;if(nm)p.name=nm;if(wantBase){S.sun.base=p.id;S.sun.on=true;}clearExample();save();renderAll();toast(`${pinNo(p.id)}番のピンを新しい位置で固定しました${wantBase?"(太陽の道の基点)":""}`);}
   else{const p=addPin({lat:c.lat,lon:c.lng,name:nm||null,where:place.where||""});if(p){if(wantBase){S.sun.base=p.id;S.sun.on=true;save();renderAll();}toast(`${S.pins.length}番目のピン「${p.name}」を固定しました${wantBase?"(太陽の道の基点)":""}。次の場所を探せます。`);}}
-  endPlace();showTab("pins");$("q").value="";syncClr();searchSeq++;$("results").innerHTML="";
+  endPlace();showTab("pins");$("q").value="";syncClr();searchSeq++;$("results").innerHTML="";clearCands();
   if(S.pins.length>=2)setTimeout(()=>fitAll(),300);
   if(S.pins.length<MAXP)setTimeout(()=>{try{$("q").focus({preventScroll:true});}catch(e){}},350);};
 function setBaseBtn(on){const b=$("placeBase");b.setAttribute("aria-pressed",String(on));b.innerHTML=on?"✓ 太陽の道の<br>基点にする":"☀ 太陽の道の<br>基点にする";}
@@ -1221,9 +1267,21 @@ async function loadShared(){const h=location.hash;if(!/^#(m|z|j)=/.test(h))retur
     save();history.replaceState(null,"",location.pathname+location.search);
     setTimeout(()=>toast(`共有された地図を開きました(${o.pins.length}か所)`),800);return true;}
   catch(e){setTimeout(()=>toast("共有のリンクを読み取れませんでした"),800);return false;}}
+/* ---- はじめての人向けの使い方(最初の1回だけ自動で出る) ---- */
+const GUIDE=[["① 場所を探してピンを立てる","「ピン」タブの検索欄に神社などの名前を入れて🔎。候補は地図にも青い番号で出ます。選ぶと十字の画面になるので、地図を動かして位置を合わせ「この場所でOK」で固定します。地図をタップしても立てられます。"],
+ ["② ラインを引く","「ライン」タブの「＋新しいライン」でピンを順にタップ。「一直線に並ぶ組み合わせを探す」で、レイライン上に並ぶ場所を自動で探せます。線は地球の丸みに沿った直線です。"],
+ ["③ 太陽の道・東西南北","「太陽の道」タブで、夏至・冬至・春分・秋分の日の出と日の入り、東西南北の線を出せます。基点はピンをタップして選べます。"],
+ ["④ 保存・共有","「地図・保存」タブで名前を付けて保存、画像(JPG)の保存ができます。地図の上の「共有」から、リンクや画像を送れます。"]];
+function showGuide(){let i=0;const m=$("modal");
+  const draw=()=>{m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="使い方" style="max-width:420px"><p class="note" style="margin:0">${i+1} / ${GUIDE.length}</p><h3>${GUIDE[i][0]}</h3><p class="help" style="font-size:14px;color:var(--text)">${GUIDE[i][1]}</p>
+    <div class="row"><button class="btn gold" id="gNext">${i<GUIDE.length-1?"次へ":"はじめる"}</button>${i>0?`<button class="btn" id="gPrev">戻る</button>`:""}<button class="btn small" id="gSkip" style="margin-left:auto">閉じる</button></div></div>`;
+    m.hidden=false;$("gNext").onclick=()=>{if(i<GUIDE.length-1){i++;draw();}else close();};if($("gPrev"))$("gPrev").onclick=()=>{i--;draw();};$("gSkip").onclick=close;};
+  const close=()=>{m.hidden=true;m.innerHTML="";try{localStorage.setItem("leyline-guided","1");}catch(e){}};draw();}
+$("showGuide").onclick=showGuide;
 /* ============ 起動 ============ */
 (async()=>{
 const fromShare=await loadShared();
+try{if(!localStorage.getItem("leyline-guided")&&!fromShare)setTimeout(showGuide,1200);}catch(e){}
 if(S.tapAdd===undefined) S.tapAdd=true;
 renderAll();
 if(window.maplibregl){initMap().then(()=>{if(fromShare)setTimeout(()=>fitAll(false),400);});}else{$("map").innerHTML='<p style="padding:20px;color:#13213a">地図を読み込めませんでした。ページを開き直してください。</p>';}
