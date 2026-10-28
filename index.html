@@ -42,7 +42,7 @@ input,select,textarea{font-size:16px!important}
 #panel.min{height:auto;position:absolute;left:0;right:0;bottom:0;z-index:6;background:rgba(14,26,43,.95);backdrop-filter:blur(6px)}
 :root{padding-bottom:0!important}
 #app{position:relative}
-#panel{padding-bottom:env(safe-area-inset-bottom,0px)}
+#panel.min{padding-bottom:env(safe-area-inset-bottom,0px)}
 #app.pmin .maplibregl-ctrl-bottom-right,#app.pmin .maplibregl-ctrl-bottom-left{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
 #panel.min .body{display:none}
 .ptop{position:relative;height:16px;display:flex;justify-content:center;align-items:center;flex:none}
@@ -60,7 +60,7 @@ input,select,textarea{font-size:16px!important}
 .tabs button[role=tab]{border:0;background:transparent;border-bottom:2px solid transparent;padding:8px 1px;font-size:12.5px;white-space:nowrap;font-weight:500;color:var(--muted);cursor:pointer}
 .tabs button[role=tab][aria-selected="true"]{color:var(--star);border-bottom-color:var(--star)}
 .tabs .cnt{font-size:11px;opacity:.8;margin-left:2px;font-variant-numeric:tabular-nums}
-.body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding-block:2px 6px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
+.body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding-block:2px calc(10px + env(safe-area-inset-bottom,0px));padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
 .tab{display:flex;flex-direction:column;gap:14px}
 .tab[hidden]{display:none}
 h2{margin:0;font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--star-deep)}
