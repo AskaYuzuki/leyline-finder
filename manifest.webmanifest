@@ -1,6 +1,6 @@
 {
  "name": "LeyLine Finder",
- "short_name": "LeyLine",
+ "short_name": "LeyLine Finder",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
