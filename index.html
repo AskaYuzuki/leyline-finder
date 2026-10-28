@@ -1280,8 +1280,8 @@ const GUIDE=[["① 場所を探してピンを立てる","「ピン」タブの�
  ["③ 太陽の道・東西南北","「太陽の道」タブで、夏至・冬至・春分・秋分の日の出と日の入り、東西南北の線を出せます。基点はピンをタップして選べます。"],
  ["④ 保存・共有","「地図・保存」タブで名前を付けて保存、画像(JPG)の保存ができます。地図の上の「共有」から、リンクや画像を送れます。"]];
 function showGuide(){let i=0;const m=$("modal");
-  const draw=()=>{m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="使い方" style="max-width:420px"><p class="note" style="margin:0">${i+1} / ${GUIDE.length}</p><h3>${GUIDE[i][0]}</h3><p class="help" style="font-size:14px;color:var(--text)">${GUIDE[i][1]}</p>
-    <div class="row"><button class="btn gold" id="gNext">${i<GUIDE.length-1?"次へ":"はじめる"}</button>${i>0?`<button class="btn" id="gPrev">戻る</button>`:""}<button class="btn small" id="gSkip" style="margin-left:auto">閉じる</button></div></div>`;
+  const draw=()=>{m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="使い方" style="max-width:420px;position:relative"><button class="xbtn" id="gSkip" aria-label="使い方を閉じる" title="閉じる"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button><p class="note" style="margin:0;padding-right:44px">${i+1} / ${GUIDE.length}</p><h3 style="padding-right:44px">${GUIDE[i][0]}</h3><p class="help" style="font-size:14px;color:var(--text)">${GUIDE[i][1]}</p>
+    <div class="row" style="justify-content:flex-start">${i>0?`<button class="btn" id="gPrev">戻る</button>`:""}<button class="btn gold" id="gNext">${i<GUIDE.length-1?"次へ":"はじめる"}</button></div></div>`;
     m.hidden=false;$("gNext").onclick=()=>{if(i<GUIDE.length-1){i++;draw();}else close();};if($("gPrev"))$("gPrev").onclick=()=>{i--;draw();};$("gSkip").onclick=close;};
   const close=()=>{m.hidden=true;m.innerHTML="";try{localStorage.setItem("leyline-guided","1");}catch(e){}};draw();}
 $("showGuide").onclick=showGuide;
