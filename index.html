@@ -605,8 +605,9 @@ async function poiTile(z,x,y){const key=`${z}/${x}/${y}`;if(poiCache.has(key))re
 const OP_URLS=["https://overpass-api.de/api/interpreter","https://overpass.private.coffee/api/interpreter"];
 const CELL=0.05;
 function classifyHist(t){const n=t["name:ja"]||t.name||"";if(!n||t.amenity==="place_of_worship")return null;
+  if(/警察|駐在|交番|駅|学校|郵便|病院|資料館|壁画館|博物館|体験館|出土品|公園|周辺地区/.test(n))return null;
   if(/古墳|陵|塚/.test(n)||t.historic==="tomb"||t.site_type==="tumulus"||t["archaeological_site"]==="tumulus")return "kofun";
-  if(/駐車|バス|店|案内/.test(n))return null;return "iseki";}
+  if(/駐車|バス|店|案内|警察|駐在|交番|駅|学校|郵便|病院|資料館|壁画館|博物館|体験館|出土品|公園|周辺地区/.test(n))return null;return "iseki";}
 async function overpassCells(cells){
   const out=new Map(),miss=[];
   for(const c of cells){const st=await poiStoreGet("op/"+c[0]+"/"+c[1]);if(st)out.set(c.join(),st);else miss.push(c);}
@@ -615,7 +616,7 @@ async function overpassCells(cells){
     const q=`[out:json][timeout:20];(nwr["historic"~"^(archaeological_site|tomb|ruins|castle)$"]["name"](${bb});nwr["historic"~"^(memorial|monument|boundary_stone)$"]["name"~"跡|史跡|古墳"](${bb});nwr["site_type"="tumulus"]["name"](${bb}););out center tags qt;`;
     let els=null;
     // まず中継役(Cloudflare)経由で聞く。つながらないときだけ直接
-    if(RELAY){const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),15000);
+    if(RELAY){const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),25000);
       try{const r=await fetch(`${RELAY}/hist?bb=${bb}`,{signal:ac.signal});if(r.ok){const j=await r.json();if(j.ok)els=j.items;}}catch(e){}finally{clearTimeout(tm);}}
     if(!els)for(const u of OP_URLS){const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),12000);
       try{const r=await fetch(u,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ac.signal});if(!r.ok)continue;els=(await r.json()).elements||[];break;}catch(e){}finally{clearTimeout(tm);}}
@@ -635,7 +636,9 @@ async function loadPoi(){if(!map)return;const my=++poiSeq;
   let list=[];for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)list.push([x,y,(x-cx)**2+(y-cy)**2]);
   list.sort((a,b)=>a[2]-b[2]);list=list.slice(0,48);
   const got=new Map();const done=()=>{if(my!==poiSeq)return;const seen=new Set(),feats=[];
-    for(const fs of got.values())for(const f of fs){const k=f.properties.n+f.geometry.coordinates.map(v=>v.toFixed(3)).join();if(!seen.has(k)){seen.add(k);feats.push(f);}}
+    const byName=new Map();
+    for(const fs of got.values())for(const f of fs){const nm=f.properties.n,[lo,la]=f.geometry.coordinates;const arr=byName.get(nm)||[];
+      if(arr.some(g=>dist({lat:la,lon:lo},{lat:g[1],lon:g[0]})<0.3))continue;arr.push([lo,la]);byName.set(nm,arr);feats.push(f);}
     poiData={type:"FeatureCollection",features:feats};const src=map.getSource("poiall");if(src)src.setData(poiData);};
   const pending=list.filter(([x,y])=>!poiCache.has(`${Z}/${x}/${y}`));$("poiBusy").hidden=!pending.length;
   let i=0,dT=null;const soon=()=>{if(!dT)dT=setTimeout(()=>{dT=null;done();},150);};

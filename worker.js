@@ -1,7 +1,7 @@
 // LeyLine Finder 中継役(Cloudflare Workers)
 // ・/geo?q=名前      … geocoding.jp に名前を問い合わせ、緯度経度を返す(同じ言葉は7日間覚えておき、問い合わせを減らす)
 // ・/expand?u=URL    … Googleマップの共有URL(maps.app.goo.gl など)の行き先を調べ、緯度経度を返す
-// ・/hist?bb=南,西,北,東 … 古墳・遺跡などの史跡を OpenStreetMap(Overpass)から探して返す
+// ・/hist?bb=南,西,北,東 … 古墳・遺跡などの史跡を OpenStreetMap(Overpass)と Wikidata から探して返す
 // LeyLine Finder(askayuzuki.github.io)からの問い合わせだけに答える
 
 const ALLOWED_ORIGINS = ["https://askayuzuki.github.io"];
@@ -69,26 +69,39 @@ export default {
       const key = new Request("https://leyline-cache.invalid/hist?bb=" + box);
       const hit = await cache.match(key);
       if (hit) return new Response(await hit.text(), { headers });
-      const q = `[out:json][timeout:25];(nwr["historic"~"^(archaeological_site|tomb|ruins|castle)$"]["name"](${box});nwr["historic"~"^(memorial|monument|boundary_stone)$"]["name"~"跡|史跡|古墳"](${box});nwr["site_type"="tumulus"]["name"](${box}););out center tags qt;`;
-      const ends = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
-      for (const ep of ends) {
+      const [S, W, N, E] = bb;
+      const withTimeout = async (p, ms) => { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); try { return await p(ac.signal); } finally { clearTimeout(t); } };
+      // ① OpenStreetMap(Overpass)：史跡の登録(古墳・遺跡・城跡など)
+      const overpass = async () => {
+        const q = `[out:json][timeout:15];(nwr["historic"~"^(archaeological_site|tomb|ruins|castle)$"]["name"](${box});nwr["historic"~"^(memorial|monument|boundary_stone)$"]["name"~"跡|史跡|古墳"](${box});nwr["site_type"="tumulus"]["name"](${box}););out center tags qt;`;
+        for (const ep of ["https://overpass.private.coffee/api/interpreter", "https://overpass-api.de/api/interpreter"]) {
+          try {
+            const j = await withTimeout(async sig => { const r = await fetch(ep + "?data=" + encodeURIComponent(q), { signal: sig, headers: { "User-Agent": "LeyLineFinder-relay/1.0 (personal map app)" } }); if (!r.ok) throw new Error(r.status); return r.json(); }, 9000);
+            const keep = ["name", "name:ja", "historic", "site_type", "archaeological_site", "amenity"];
+            return (j.elements || []).map(e => {
+              const lat = e.lat ?? (e.center && e.center.lat), lon = e.lon ?? (e.center && e.center.lon);
+              if (lat == null) return null;
+              const tags = {}; keep.forEach(k => { if (e.tags && e.tags[k]) tags[k] = e.tags[k]; });
+              return { lat, lon, tags };
+            }).filter(Boolean);
+          } catch (e) { }
+        }
+        return null;
+      };
+      // ② Wikidata：座標を持つ項目のうち、名前に古墳・陵・塚・遺跡・跡が入るもの
+      const wikidata = async () => {
+        const q = `SELECT ?label ?loc WHERE { SERVICE wikibase:box { ?item wdt:P625 ?loc . bd:serviceParam wikibase:cornerSouthWest "Point(${W} ${S})"^^geo:wktLiteral . bd:serviceParam wikibase:cornerNorthEast "Point(${E} ${N})"^^geo:wktLiteral . } ?item rdfs:label ?label FILTER(lang(?label)="ja" && REGEX(?label,"古墳|陵|塚|遺跡|跡")) } LIMIT 400`;
         try {
-          const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "LeyLineFinder-relay/1.0" } });
-          if (!r.ok) continue;
-          const j = await r.json();
-          const keep = ["name", "name:ja", "historic", "site_type", "archaeological_site", "amenity"];
-          const items = (j.elements || []).map(e => {
-            const lat = e.lat ?? (e.center && e.center.lat), lon = e.lon ?? (e.center && e.center.lon);
-            if (lat == null) return null;
-            const tags = {}; keep.forEach(k => { if (e.tags && e.tags[k]) tags[k] = e.tags[k]; });
-            return { lat, lon, tags };
-          }).filter(Boolean);
-          const body = JSON.stringify({ ok: true, items });
-          ctx.waitUntil(cache.put(key, new Response(body, { headers: { "Cache-Control": "max-age=2592000" } })));
-          return new Response(body, { headers });
-        } catch (e) { }
-      }
-      return reply({ ok: false, error: "overpass" }, 502);
+          const j = await withTimeout(async sig => { const r = await fetch("https://query.wikidata.org/sparql?query=" + encodeURIComponent(q), { signal: sig, headers: { "Accept": "application/sparql-results+json", "User-Agent": "LeyLineFinder-relay/1.0 (personal map app)" } }); if (!r.ok) throw new Error(r.status); return r.json(); }, 9000);
+          return (j.results.bindings || []).map(b => { const m = b.loc.value.match(/Point\(([-\d.]+) ([-\d.]+)\)/); return m ? { lat: +m[2], lon: +m[1], tags: { name: b.label.value, historic: "wikidata" } } : null; }).filter(Boolean);
+        } catch (e) { return null; }
+      };
+      const [a1, a2] = await Promise.all([overpass(), wikidata()]);
+      if (!a1 && !a2) return reply({ ok: false, error: "sources" }, 502);
+      const items = [...(a1 || []), ...(a2 || [])];
+      const body = JSON.stringify({ ok: true, items, from: { overpass: !!a1, wikidata: !!a2 } });
+      ctx.waitUntil(cache.put(key, new Response(body, { headers: { "Cache-Control": "max-age=2592000" } })));
+      return new Response(body, { headers });
     }
 
     return reply({ ok: true, app: "LeyLine Finder relay" });
