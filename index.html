@@ -52,7 +52,7 @@ button,input,select{font:inherit;color:inherit}
 .tabs button{border:0;background:transparent;border-bottom:2px solid transparent;padding:8px 2px;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
 .tabs button[aria-selected="true"]{color:var(--star);border-bottom-color:var(--star)}
 .tabs .cnt{font-size:11px;opacity:.8;margin-left:2px;font-variant-numeric:tabular-nums}
-.body{flex:1;min-height:0;overflow:auto;padding-block:4px 18px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
+.body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding-block:4px 18px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
 .tab{display:flex;flex-direction:column;gap:14px}
 .tab[hidden]{display:none}
 h2{margin:0;font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--star-deep)}
@@ -80,13 +80,14 @@ input[type=search]{width:100%}
 .note{font-size:12px;color:var(--muted)}
 
 .pinlist{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
-.pinitem{display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;background:var(--night-2);border:1px solid var(--night-3);border-radius:10px;padding:7px 8px}
+.pinitem{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:center;background:var(--night-2);border:1px solid var(--night-3);border-radius:10px;padding:7px 8px}
 .pinitem.sel{border-color:var(--star)}
 .num{width:24px;height:24px;border-radius:50%;background:var(--night);border:2px solid var(--star);color:var(--star);display:grid;place-items:center;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
 .pinitem input{width:100%;background:transparent;border:0;border-bottom:1px dashed transparent;border-radius:0;padding:2px 0;font-weight:500}
 .pinitem input:hover,.pinitem input:focus{border-bottom-color:var(--night-3)}
 .pinitem .coord{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.pinitem .acts{display:flex;gap:4px}
+.pinitem .acts{display:flex;gap:4px;flex-wrap:wrap;grid-column:2}
+.pinitem .pname{font-weight:500;padding:2px 0;overflow-wrap:anywhere}
 
 .linecard{background:var(--night-2);border:1px solid var(--night-3);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
 .linecard.off{opacity:.55}
@@ -141,6 +142,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
 .cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;pointer-events:none;width:64px;height:64px}
 .placebar{gap:8px}
 .placebar input{width:100%}
+.placebar input.ro{background:transparent;border-color:transparent;padding-left:0;font-weight:700;font-size:15px}
 .placebar .step{color:var(--star);font-size:12px;letter-spacing:.1em}
 .toast{position:absolute;left:50%;top:calc(58px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:5;background:rgba(14,26,43,.95);color:var(--text);padding:9px 14px;border-radius:10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:calc(100% - 32px);text-align:center}
 
@@ -597,7 +599,7 @@ function renderPinList(){
   $("pinEmpty").hidden=S.pins.length>0;
   $("pinlist").innerHTML=S.pins.map((p,i)=>`<li class="pinitem${selPin===p.id?" sel":""}" data-pin="${p.id}">
     <span class="num">${i+1}</span>
-    <div style="min-width:0"><input type="text" id="pn-${p.id}" value="${esc(p.name)}" aria-label="ピン${i+1}の名前" data-rename="${p.id}">
+    <div style="min-width:0"><div class="pname">${esc(p.name)}</div>
     <div class="coord">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div></div>
     <div class="acts"><button class="btn small" data-go="${p.id}" title="地図で見る">見る</button><button class="btn small" data-fix="${p.id}" title="位置を合わせ直す">位置を直す</button><button class="btn small danger" data-del="${p.id}" aria-label="ピン${i+1}を消す">消す</button></div></li>`).join("");}
 function renderPinChipsForBuild(){/* ライン画面のピン選び(作成中のみ) */
@@ -727,7 +729,8 @@ function startPlace(o){
   if(build) endBuild(false);
   place=o;
   $("placeStep").textContent=o.editId?`${pinNo(o.editId)}番のピンの位置を直す`:`${S.pins.length+1}番目のピンを立てる`;
-  $("placeName").value=o.name||"";
+  $("placeName").value=o.name||"";$("placeName").readOnly=!!o.name;$("placeName").classList.toggle("ro",!!o.name);
+  $("placeName").placeholder="場所の名前を入れてください";
   $("cross").hidden=false;$("placebar").hidden=false;document.querySelector(".mapbar").hidden=true;
   if(window.innerWidth<900){$("panel").classList.add("min");syncChev();}
   setTimeout(()=>{map.resize();map.jumpTo({center:[o.lon,o.lat],zoom:Math.min(18,o.zoom||16)});updCoord();},60);
