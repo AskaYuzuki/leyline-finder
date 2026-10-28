@@ -581,12 +581,19 @@ function mvtPoints(buf,layerName){const b=new Uint8Array(buf);let pos=0;
 let poiData={type:"FeatureCollection",features:[]};
 const poiCache=new Map();let poiTpl=null,poiTimer=null,poiSeq=0;
 async function poiTemplate(){if(poiTpl)return poiTpl;const j=await (await fetch("https://tiles.openfreemap.org/planet")).json();poiTpl=j.tiles[0];return poiTpl;}
+/* 取り出した目印(1枚あたり数百バイト〜数KB)だけをiPhoneに保存する。地図データそのものは保存しない */
+const POI_STORE="leyline-poi-v1";
+async function poiStoreGet(key){try{const c=await caches.open(POI_STORE);const r=await c.match("https://poi.invalid/"+key);return r?await r.json():null;}catch(e){return null;}}
+async function poiStorePut(key,feats){try{const c=await caches.open(POI_STORE);await c.put("https://poi.invalid/"+key,new Response(JSON.stringify(feats),{headers:{"Content-Type":"application/json","Date":new Date().toUTCString()}}));
+  if(Math.random()<.05){const ks=await c.keys();if(ks.length>4000)for(const k of ks.slice(0,ks.length-3500))await c.delete(k);}}catch(e){}}
 async function poiTile(z,x,y){const key=`${z}/${x}/${y}`;if(poiCache.has(key))return poiCache.get(key);
-  const p=(async()=>{try{const tpl=await poiTemplate();const r=await fetch(tpl.replace("{z}",z).replace("{x}",x).replace("{y}",y));let buf=new Uint8Array(await r.arrayBuffer());
+  const p=(async()=>{const stored=await poiStoreGet(key);if(stored)return stored;
+    try{const tpl=await poiTemplate();const r=await fetch(tpl.replace("{z}",z).replace("{x}",x).replace("{y}",y));let buf=new Uint8Array(await r.arrayBuffer());
     if(buf[0]===0x1f&&buf[1]===0x8b){const ds=new DecompressionStream("gzip");const w=ds.writable.getWriter();w.write(buf);w.close();buf=new Uint8Array(await new Response(ds.readable).arrayBuffer());}
     const n=Math.pow(2,z);
-    return mvtPoints(buf,"poi").map(f=>{const k=classifyPoi(f.props);if(!k)return null;const lon=(x+f.x)/n*360-180,lat=deg(Math.atan(Math.sinh(Math.PI*(1-2*(y+f.y)/n))));
-      return {type:"Feature",properties:{k,n:f.props["name:ja"]||f.props.name||""},geometry:{type:"Point",coordinates:[lon,lat]}};}).filter(Boolean);}catch(e){poiCache.delete(key);return [];}})();
+    const feats=mvtPoints(buf,"poi").map(f=>{const k=classifyPoi(f.props);if(!k)return null;const lon=(x+f.x)/n*360-180,lat=deg(Math.atan(Math.sinh(Math.PI*(1-2*(y+f.y)/n))));
+      return {type:"Feature",properties:{k,n:f.props["name:ja"]||f.props.name||""},geometry:{type:"Point",coordinates:[+lon.toFixed(6),+lat.toFixed(6)]}};}).filter(Boolean);
+    if(r.ok)poiStorePut(key,feats);return feats;}catch(e){poiCache.delete(key);return [];}})();
   poiCache.set(key,p);if(poiCache.size>600)poiCache.delete(poiCache.keys().next().value);return p;}
 function schedulePoi(){clearTimeout(poiTimer);poiTimer=setTimeout(loadPoi,250);}
 async function loadPoi(){if(!map)return;const my=++poiSeq;
