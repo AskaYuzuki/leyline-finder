@@ -318,6 +318,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
           <label class="check"><input type="checkbox" id="labels"> 線に距離と方位の札を付ける</label>
           <p class="help">線の幅は実際の地面で5m。地図を拡大すると5mの幅で描かれます。広い範囲を見ているときは、5mだと細すぎて見えなくなるため、見える細さ(2ピクセル)で描いています。</p>
           <label class="check"><input type="checkbox" id="names"> ピンの名前を表示する</label>
+          <label class="check"><input type="checkbox" id="nsewOn2"> 東西南北の線を表示する</label>
         </div>
         <div class="group">
           <h2>地図に表示する目印</h2>
@@ -431,12 +432,13 @@ const EXT_OPTS=[[0,"ピンの間だけ"],[20,"両端を20km延ばす"],[50,"両�
 let S;
 function exampleState(){
   return {pins:[],lines:[],sun:{on:true,base:null,show:{sr:true,ss:true,er:true,es:true,wr:true,ws:true}},
-    base:"osm",relief:false,labels:true,names:true,poi:{shrine:true,kofun:true,iseki:true,iwakura:true},tol:1,seq:{pin:1,line:1},example:false,tapAdd:true};}
+    base:"osm",relief:false,labels:true,names:true,nsew:true,poi:{shrine:true,kofun:true,iseki:true,iwakura:true},tol:1,seq:{pin:1,line:1},example:false,tapAdd:true};}
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&s.pins){
     if(s.example){s.pins=[];s.lines=[];s.sun.base=null;s.example=false;}
     if(!s.v2){s.v2=1;s.sun.show={sr:true,ss:true,er:true,es:true,wr:true,ws:true};s.sun.on=true;if(s.base==="pale")s.base="osm";}
     if(!["osm","positron","std","photo"].includes(s.base))s.base="osm";
     if(!s.poi)s.poi={shrine:true,kofun:true,iseki:true,iwakura:true};
+    if(s.nsew===undefined)s.nsew=true;
     // 開くたびに白紙から。前回のピンは「呼び出す」ボタンで戻せるように取っておく
     if(s.pins.length) s.prev={pins:s.pins,lines:s.lines,base:s.sun.base};
     s.pins=[];s.lines=[];s.sun.base=null;
@@ -565,6 +567,9 @@ async function initMap(){
     attributionControl:{compact:true},localIdeographFontFamily:"'Hiragino Sans','Noto Sans CJK JP',sans-serif",pitchWithRotate:false,dragRotate:false});
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"top-right");
   map.addControl(new maplibregl.ScaleControl({unit:"metric"}),"bottom-right");
+  // 地図の出典は小さな「ⓘ」だけにする(押すと出典が開く)
+  const shrinkAttr=()=>document.querySelectorAll(".maplibregl-ctrl-attrib").forEach(el=>{el.classList.remove("maplibregl-compact-show");el.removeAttribute("open");});
+  map.on("load",()=>setTimeout(shrinkAttr,50));map.on("styledata",()=>setTimeout(shrinkAttr,50));
   map.touchZoomRotate.disableRotation();
   map.on("style.load",()=>{addOverlay(map);renderMap();});
   map.on("zoomend",renderLabels);
@@ -728,7 +733,7 @@ function renderLines(){
   if(build){/* nothing */}
 }
 function renderSun(){
-  $("sunOn").checked=S.sun.on;$("nsewOn").checked=!!S.nsew;
+  $("sunOn").checked=S.sun.on;$("nsewOn").checked=!!S.nsew;$("nsewOn2").checked=!!S.nsew;
   $("sunBase").innerHTML=S.pins.map((p,i)=>`<option value="${p.id}" ${S.sun.base===p.id?"selected":""}>${i+1}. ${esc(p.name)}</option>`).join("")+(S.pins.length>1?`<option value="all" ${S.sun.base==="all"?"selected":""}>すべてのピンから</option>`:"");
   const b=S.sun.base==="all"?S.pins[0]:(pinById(S.sun.base)||S.pins[0]);
   $("sunTable").innerHTML=SUN.map(([k,name,dec,rise,c])=>{const A=b?sunAz(b.lat,dec):null;const az=A==null?null:(rise?A:360-A);
@@ -1011,6 +1016,7 @@ $("linelist").addEventListener("click",e=>{const m=e.target.closest("[data-mode]
   if(d){S.lines=S.lines.filter(l=>l.id!==+d.dataset.ldel);save();renderAll();}});
 $("sunOn").onchange=e=>{S.sun.on=e.target.checked;save();renderAll();};
 $("nsewOn").onchange=e=>{S.nsew=e.target.checked;save();renderAll();};
+$("nsewOn2").onchange=e=>{S.nsew=e.target.checked;save();renderAll();};
 $("sunBase").onchange=e=>{S.sun.base=e.target.value==="all"?"all":+e.target.value;save();renderAll();};
 $("sunTable").addEventListener("change",e=>{const k=e.target.dataset.sun;if(k){S.sun.show[k]=e.target.checked;if(e.target.checked)S.sun.on=true;save();renderAll();}});
 $("baseRadios").addEventListener("change",e=>{S.base=e.target.value;save();styleFor(S.base).then(st=>map.setStyle(st,{diff:false}));});
@@ -1105,14 +1111,32 @@ function packMap(){const idx=new Map(S.pins.map((p,i)=>[p.id,i]));
   return b64e(JSON.stringify({v:1,p:S.pins.map(p=>[p.name,+p.lat.toFixed(6),+p.lon.toFixed(6),p.where||""]),
     l:S.lines.map(L=>[L.pins.map(id=>idx.get(id)),L.mode==="path"?1:0,L.color,L.ext||0,L.on?1:0,L.name||""]),
     s:[S.sun.on?1:0,S.sun.base==="all"?-2:(idx.has(S.sun.base)?idx.get(S.sun.base):-1),SUN.map(([k])=>S.sun.show[k]?1:0).join(""),S.nsew?1:0],b:S.base}));}
+/* 短いリンク用：数字を整数にまとめ、圧縮してから文字にする */
+async function deflate(str){const cs=new CompressionStream("deflate-raw");const w=cs.writable.getWriter();w.write(new TextEncoder().encode(str));w.close();return new Uint8Array(await new Response(cs.readable).arrayBuffer());}
+async function inflate(bytes){const ds=new DecompressionStream("deflate-raw");const w=ds.writable.getWriter();w.write(bytes);w.close();return new TextDecoder().decode(await new Response(ds.readable).arrayBuffer());}
+const bytesToB64=by=>{let bin="";by.forEach(c=>bin+=String.fromCharCode(c));return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");};
+const b64ToBytes=str=>{str=str.replace(/-/g,"+").replace(/_/g,"/");return Uint8Array.from(atob(str),c=>c.charCodeAt(0));};
+async function packShort(){const idx=new Map(S.pins.map((p,i)=>[p.id,i]));
+  const o=[2,S.pins.map(p=>[p.name,Math.round(p.lat*1e5),Math.round(p.lon*1e5)]),
+    S.lines.map(L=>{const ci=LINE_COLORS.indexOf(L.color);return [L.pins.map(id=>idx.get(id)),L.mode==="path"?1:0,ci>=0?ci:L.color,L.ext||0,L.on?1:0];}),
+    [S.sun.on?1:0,S.sun.base==="all"?-2:(idx.has(S.sun.base)?idx.get(S.sun.base):-1),parseInt(SUN.map(([k])=>S.sun.show[k]?1:0).join(""),2),S.nsew?1:0],
+    ["osm","positron","std","photo"].indexOf(S.base)];
+  const js=JSON.stringify(o);
+  if(window.CompressionStream){try{return "z="+bytesToB64(await deflate(js));}catch(e){}}
+  return "j="+b64e(js);}
+function unpackShort(js){const o=JSON.parse(js);if(o[0]!==2)throw 0;
+  const pins=o[1].slice(0,MAXP).map((a,i)=>({id:i+1,name:String(a[0]),lat:a[1]/1e5,lon:a[2]/1e5,where:""}));
+  const lines=o[2].map((a,i)=>({id:i+1,pins:a[0].filter(k=>k>=0&&k<pins.length).map(k=>k+1),mode:a[1]?"path":"straight",color:typeof a[2]==="number"?LINE_COLORS[a[2]]:a[2],ext:+a[3]||0,on:!!a[4]})).filter(L=>L.pins.length>=2);
+  const bits=o[3][2].toString(2).padStart(6,"0");
+  return {pins,lines,sun:[o[3][0],o[3][1],bits,o[3][3]],base:["osm","positron","std","photo"][o[4]]||"osm"};}
 function unpackMap(str){const o=JSON.parse(b64d(str));if(!o||o.v!==1)throw 0;
   const pins=o.p.slice(0,MAXP).map((a,i)=>({id:i+1,name:String(a[0]).normalize("NFKC"),lat:+a[1],lon:+a[2],where:a[3]||""}));
   const lines=(o.l||[]).map((a,i)=>({id:i+1,pins:a[0].filter(k=>k>=0&&k<pins.length).map(k=>k+1),mode:a[1]?"path":"straight",color:a[2]||LINE_COLORS[i%LINE_COLORS.length],ext:+a[3]||0,on:!!a[4],name:a[5]||undefined})).filter(L=>L.pins.length>=2);
   return {pins,lines,sun:o.s,base:o.b};}
-function shareText(){return S.pins.length?`LeyLine Finder：${S.pins.map(p=>p.name).join("・")}`:"LeyLine Finder";}
+function shareText(){return "LeyLine Finder の地図";}
 async function shareLink(){
   if(!S.pins.length){toast("ピンを立ててから共有してください");return;}
-  const url=APP_URL+"#m="+packMap();
+  const url=APP_URL+"#"+await packShort();
   try{if(navigator.share){await navigator.share({title:"LeyLine Finder",text:shareText(),url});return;}}catch(e){if(e&&e.name==="AbortError")return;}
   try{await navigator.clipboard.writeText(url);toast("リンクをコピーしました。LINEやメールに貼り付けて送れます。");}
   catch(e){const m=$("modal");m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true"><h3>地図のリンク</h3><p class="help">下のリンクを長押ししてコピーし、送りたい相手に貼り付けてください。</p><textarea readonly style="width:100%;height:120px;font-size:13px">${esc(url)}</textarea><div class="row"><button class="btn gold" id="mClose">閉じる</button></div></div>`;m.hidden=false;$("mClose").onclick=()=>{m.hidden=true;m.innerHTML="";};}}
@@ -1125,8 +1149,9 @@ $("shareBtn").onclick=()=>{const m=$("modal");
     <button class="btn small" id="sh0" style="align-self:flex-start">閉じる</button></div>`;
   m.hidden=false;const close=()=>{m.hidden=true;m.innerHTML="";};
   $("sh0").onclick=close;$("sh1").onclick=()=>{close();shareLink();};$("sh2").onclick=()=>{close();showTab("map");exportJPG(2,null,true);};};
-function loadShared(){const h=location.hash;if(!h.startsWith("#m="))return false;
-  try{const o=unpackMap(h.slice(3));
+async function loadShared(){const h=location.hash;if(!/^#(m|z|j)=/.test(h))return false;
+  try{const k=h[1],body=h.slice(3);
+    const o=k==="m"?unpackMap(body):unpackShort(k==="z"?await inflate(b64ToBytes(body)):b64d(body));
     if(S.pins.length)S.prev={pins:S.pins,lines:S.lines,base:S.sun.base};
     S.pins=o.pins;S.lines=o.lines;S.seq.pin=o.pins.length+1;S.seq.line=o.lines.length+1;
     if(o.sun){S.sun.on=!!o.sun[0];S.sun.base=o.sun[1]===-2?"all":(o.sun[1]>=0?o.sun[1]+1:(o.pins[0]?1:null));
@@ -1136,10 +1161,12 @@ function loadShared(){const h=location.hash;if(!h.startsWith("#m="))return false
     setTimeout(()=>toast(`共有された地図を開きました(${o.pins.length}か所)`),800);return true;}
   catch(e){setTimeout(()=>toast("共有のリンクを読み取れませんでした"),800);return false;}}
 /* ============ 起動 ============ */
-const fromShare=loadShared();
+(async()=>{
+const fromShare=await loadShared();
 if(S.tapAdd===undefined) S.tapAdd=true;
 renderAll();
 if(window.maplibregl){initMap().then(()=>{if(fromShare)setTimeout(()=>fitAll(false),400);});}else{$("map").innerHTML='<p style="padding:20px;color:#13213a">地図を読み込めませんでした。ページを開き直してください。</p>';}
+})();
 
 </script>
 <script>if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
