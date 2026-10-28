@@ -224,7 +224,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
             <div class="row"><button class="btn gold small" id="gpaste">コピーした場所を貼り付ける</button><button class="btn small" id="gbackClose">閉じる</button></div>
             <p class="note" style="margin:0">うまくいかないときは、上の検索欄を長押しして「ペースト」を押してください。</p>
           </div>
-          <p class="help">ピンの順番は、「立てたピン」の番号を押したまま上下に動かすか、▲▼で入れ替えられます。<br>①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)の地名から探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>ここで見つからない場所は「Googleマップで探す」から。押すと、Googleマップから持ってくる手順が出ます。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
+          <p class="help">ピンの順番は、「立てたピン」の番号を押したまま上下に動かすか、▲▼で入れ替えられます。<br>①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>ここで見つからない場所は「Googleマップで探す」から。押すと、Googleマップから持ってくる手順が出ます。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
           <div class="row" style="justify-content:space-between">
@@ -718,6 +718,16 @@ const near=(a,b,km)=>dist(a,b)<=km;
 const FEAT_RE=/(御神木|ご神木|神木|夫婦杉|大杉|大楠|磐座|岩座|古墳|遺跡|史跡|本殿|拝殿|奥宮|奥社|摂社|末社|鳥居|御柱|夫婦岩|霊石|要石|湧水|御神水|の滝|の池|の杜)/;
 async function photonNear(q,c,d){try{const r=await fetch(`https://photon.komoot.io/api/?limit=15&bbox=${c.lon-d},${c.lat-d},${c.lon+d},${c.lat+d}&q=${encodeURIComponent(q)}`);const j=await r.json();
   return (j.features||[]).map(f=>{const p=f.properties,[lo,la]=f.geometry.coordinates;return {name:p.name||"",lat:la,lon:lo,where:[p.state,p.city].filter(Boolean).join(" "),kind:KIND[p.osm_value]||""};}).filter(x=>x.name);}catch(e){return null;}}
+/* Wikidata：座標を持つ項目(天然記念物の木・古墳・史跡・神社など)を探す。near があればそのまわりだけ */
+async function wikidata(q,near){try{
+  const sq=`${q} haswbstatement:P625`+(near?` nearcoord:${near.km}km,${near.lat},${near.lon}`:"");
+  const r=await fetch(`https://www.wikidata.org/w/api.php?action=query&format=json&origin=*&list=search&srnamespace=0&srlimit=10&srsearch=${encodeURIComponent(sq)}`);
+  const j=await r.json();const ids=((j.query&&j.query.search)||[]).map(x=>x.title).filter(t=>/^Q\d+$/.test(t));if(!ids.length)return [];
+  const r2=await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=labels|descriptions|claims&languages=ja|en&ids=${ids.join("|")}`);
+  const e=(await r2.json()).entities||{};
+  return ids.map(id=>{const it=e[id];if(!it)return null;const c=it.claims&&it.claims.P625&&it.claims.P625[0]&&it.claims.P625[0].mainsnak.datavalue;if(!c)return null;
+    const lab=(it.labels.ja||it.labels.en||{}).value||id,desc=((it.descriptions||{}).ja||{}).value||"";
+    return {name:lab,lat:c.value.latitude,lon:c.value.longitude,where:desc,kind:"Wikidata"};}).filter(x=>x&&inJP(x.lat,x.lon));}catch(e){return null;}}
 async function wiki(q){try{const r=await fetch(`https://ja.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=6&gsrsearch=${encodeURIComponent(q)}&prop=coordinates&colimit=6`);const j=await r.json();
   return Object.values((j.query&&j.query.pages)||{}).filter(p=>p.coordinates&&p.coordinates[0]).sort((a,b)=>a.index-b.index).map(p=>({name:p.title,lat:p.coordinates[0].lat,lon:p.coordinates[0].lon,where:"",kind:"Wikipedia"})).filter(x=>inJP(x.lat,x.lon));}catch(e){return null;}}
 let searchSeq=0,lastResults=[];
@@ -738,7 +748,7 @@ async function doSearch(q){
   const nq=norm(q);
   let toks=q.split(/\s+/).filter(Boolean);
   // 1回目：そのままの言葉で探す
-  const first=await Promise.all([photon(q,15),nominatim(q,8),wiki(q)]); if(my!==searchSeq) return;
+  const first=await Promise.all([photon(q,15),nominatim(q,8),wiki(q),wikidata(q)]); if(my!==searchSeq) return;
   const failed=first.every(g=>g===null);
   let cand=[].concat(...first.map(g=>g||[]));
   const exact=cand.some(x=>norm(x.name).includes(nq));
@@ -748,15 +758,15 @@ async function doSearch(q){
   let perTok=[];
   if(!exact&&toks.length>1){
     const placeTok=toks.filter(t=>!FEAT_RE.test(t)).sort((a,b)=>b.length-a.length)[0]||toks[0];
-    const second=await Promise.all([...toks.map(t=>photon(t,40)),wiki(placeTok),nominatim(placeTok,5)]); if(my!==searchSeq) return;
+    const second=await Promise.all([...toks.map(t=>photon(t,40)),wiki(placeTok),nominatim(placeTok,5),wikidata(placeTok)]); if(my!==searchSeq) return;
     perTok=second.slice(0,toks.length);
     second.forEach(g=>(g||[]).forEach(x=>cand.push(x)));
     // 「場所」が見つかったら、そのまわり(約3km)で御神木・磐座などを探す
     const feats=toks.filter(t=>t!==placeTok&&FEAT_RE.test(t));
     const pt=norm(placeTok),base=cand.find(x=>norm(x.name).includes(pt));
     if(split&&base&&feats.length){
-      const extra=await Promise.all(feats.map(t=>photonNear(t,base,0.03))); if(my!==searchSeq) return;
-      let hit=0;extra.forEach((g,i)=>(g||[]).forEach(x=>{const f=norm(feats[i]).replace(/^ご/,"御");if(norm(x.name).includes(f)||norm(x.name).includes(f.replace(/^御/,""))){x.nearBase=1;cand.push(x);hit++;}}));
+      const extra=await Promise.all([...feats.map(t=>photonNear(t,base,0.03)),...feats.map(t=>wikidata(t.replace(/^ご/,"御"),{km:3,lat:base.lat,lon:base.lon}))]); if(my!==searchSeq) return;
+      let hit=0;extra.forEach((g,i)=>(g||[]).forEach(x=>{const f=norm(feats[i%feats.length]).replace(/^ご/,"御");if(i>=feats.length||norm(x.name).includes(f)||norm(x.name).includes(f.replace(/^御/,""))){x.nearBase=1;cand.push(x);hit++;}}));
       if(!hit) cand.push({...base,kind:`${feats.join(" ")}の位置データがないため、${base.name}の位置を開きます。航空写真で合わせてください`,hint:1});}}
   if(!cand.length&&!failed){const g=await gsiAddr(q);if(my!==searchSeq)return;cand=g||[];}
   // 並べ方：長い言葉(場所の名前)ほど重く数える。名前に入っていれば高く、住所や近くにあれば少し
