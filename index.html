@@ -125,7 +125,10 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
 
 /* ---------- on-map ---------- */
 .maplibregl-popup{z-index:6}
-.mapbar{position:absolute;top:calc(4px + env(safe-area-inset-top,0px));left:max(4px,env(safe-area-inset-left,0px));z-index:3;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 70px)}
+.xbtn{position:absolute;top:6px;right:6px;width:36px;height:36px;border:0;border-radius:50%;background:var(--night-3);color:var(--text);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.xbtn:hover{background:var(--star-deep);color:#1b2433}
+.placebar .step{padding-right:44px;min-height:30px;display:flex;align-items:center}
+.mapbar{position:absolute;top:4px;left:max(4px,env(safe-area-inset-left,0px));z-index:3;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 70px)}
 .pill{border:0;border-radius:999px;padding:8px 13px;font-size:13px;font-weight:500;background:rgba(14,26,43,.9);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;backdrop-filter:blur(4px)}
 .pill[aria-pressed="true"]{background:var(--star);color:#1b2433}
 .buildbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:4;background:rgba(14,26,43,.95);border:1px solid var(--star-deep);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;width:min(440px,calc(100% - 24px));box-shadow:0 6px 20px rgba(0,0,0,.3)}
@@ -149,7 +152,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
 #placeBase[aria-pressed="true"]{background:var(--star-deep);color:#1b2433;border-color:var(--star);font-weight:700}
 .placebar input.ro{background:transparent;border-color:transparent;padding-left:0;font-weight:700;font-size:15px}
 .placebar .step{color:var(--star);font-size:12px;letter-spacing:.1em}
-.toast{position:absolute;left:50%;top:calc(58px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:5;background:rgba(14,26,43,.95);color:var(--text);padding:9px 14px;border-radius:10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:calc(100% - 32px);text-align:center}
+.toast{position:absolute;left:50%;top:52px;transform:translateX(-50%);z-index:5;background:rgba(14,26,43,.95);color:var(--text);padding:9px 14px;border-radius:10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:calc(100% - 32px);text-align:center}
 
 .pm{display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
 .pm .dot{width:24px;height:24px;border-radius:50%;background:#14243b;border:2.5px solid #f0d48c;color:#fff;font:700 12px/1 var(--f-body);display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.45)}
@@ -319,6 +322,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
     </div>
     <div class="cross" id="cross" hidden aria-hidden="true"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="13" fill="none" stroke="#fff" stroke-width="5"/><circle cx="32" cy="32" r="13" fill="none" stroke="#d62839" stroke-width="2.5"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#d62839" stroke-width="2" stroke-linecap="round"/><circle cx="32" cy="32" r="2.5" fill="#d62839"/></svg></div>
     <div class="buildbar placebar" id="placebar" hidden>
+      <button class="xbtn" id="placeCancel" aria-label="この場所を選ぶのをやめる" title="やめる">×</button>
       <p class="step" id="placeStep">位置を合わせる</p>
       <input type="text" id="placeName" aria-label="場所の名前" placeholder="場所の名前">
       <p class="help" style="margin:0">地図を動かして、十字をぴったりの場所に合わせてください。</p>
@@ -328,7 +332,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
         <button class="btn gold" id="placeOk">この場所でOK<br>（固定する）</button>
         <button class="btn" id="placeBase" aria-pressed="false">☀ 太陽の道の<br>基点にする</button>
       </div>
-      <button class="btn small" id="placeCancel" style="align-self:flex-start">やめる</button>
+
     </div>
     <div class="toast" id="toast" hidden></div>
   </main>
@@ -793,6 +797,12 @@ $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim()
 function setBaseBtn(on){const b=$("placeBase");b.setAttribute("aria-pressed",String(on));b.innerHTML=on?"✓ 太陽の道の<br>基点にする":"☀ 太陽の道の<br>基点にする";}
 $("placeBase").onclick=()=>setBaseBtn($("placeBase").getAttribute("aria-pressed")!=="true");
 $("placeCancel").onclick=()=>{const o=place;endPlace();if(o&&!o.editId&&S.pins.length>=2)setTimeout(()=>fitAll(),300);};
+/* 位置合わせの枠を下へスワイプしても閉じる */
+(()=>{const bar=$("placebar");let y0=null,x0=0;
+  bar.addEventListener("touchstart",e=>{if(e.target.closest("input,button"))return;const t=e.touches[0];y0=t.clientY;x0=t.clientX;},{passive:true});
+  bar.addEventListener("touchmove",e=>{if(y0==null)return;const dy=e.touches[0].clientY-y0;bar.style.transform=dy>0?`translate(-50%,${dy}px)`:"";},{passive:true});
+  bar.addEventListener("touchend",e=>{if(y0==null)return;const t=e.changedTouches[0],dy=t.clientY-y0,dx=Math.abs(t.clientX-x0);y0=null;bar.style.transform="";
+    if(dy>60&&dy>dx)$("placeCancel").click();},{passive:true});})();
 $("placeName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("placeOk").click();}});
 $("buildDone").onclick=()=>endBuild(true);$("buildCancel").onclick=()=>endBuild(false);
 $("buildChips").addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b)pinTapped(+b.dataset.pick);});
