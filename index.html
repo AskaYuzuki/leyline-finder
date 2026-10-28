@@ -241,9 +241,9 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
         <div class="group">
           <h2>場所をさがす</h2>
           <div class="srow"><div class="qwrap"><input type="search" id="q" enterkeyhint="search" placeholder="神社・古墳・磐座などの名前、住所、座標" autocomplete="off"><button class="qclr" id="qClr" aria-label="入力を消す" hidden><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="#0a1422" stroke-width="2.2" stroke-linecap="round"/></svg></button></div><button class="btn gold" id="qGo" aria-label="検索">🔎</button></div>
+          <div class="georow"><small>見つからないときは</small><button class="btn small" id="geoBtn">geocodingで探す</button></div>
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
-          <div class="georow"><small>見つからないときは</small><button class="btn small" id="geoBtn">geocodingで探す</button></div>
           <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>見つからないときは「geocodingで探す」を押すと、geocoding.jp(Googleマップの検索結果)で場所を探します。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
@@ -938,17 +938,21 @@ async function doSearch(q){
     const pt=norm(placeTok),base=cand.find(x=>norm(x.name).includes(pt));
     if(split&&base&&feats.length){
       const extra=await Promise.all([...feats.map(t=>photonNear(t,base,0.03)),...feats.map(t=>wikidata(t.replace(/^ご/,"御"),{km:3,lat:base.lat,lon:base.lon}))]); if(my!==searchSeq) return;
-      let hit=0;extra.forEach((g,i)=>(g||[]).forEach(x=>{const f=norm(feats[i%feats.length]).replace(/^ご/,"御");if(i>=feats.length||norm(x.name).includes(f)||norm(x.name).includes(f.replace(/^御/,""))){x.nearBase=1;cand.push(x);hit++;}}));
+      let hit=0;extra.forEach((g,i)=>(g||[]).forEach(x=>{const f=norm(feats[i%feats.length]).replace(/^ご/,"御");if(!near(x,base,3.5))return;if(i>=feats.length||norm(x.name).includes(f)||norm(x.name).includes(f.replace(/^御/,""))){x.nearBase=1;cand.push(x);hit++;}}));
       if(!hit) cand.push({...base,kind:`${feats.join(" ")}の位置データがないため、${base.name}の位置を開きます。航空写真で合わせてください`,hint:1});}}
   if(!cand.length&&!failed){const g=await gsiAddr(q);if(my!==searchSeq)return;cand=g||[];}
-  // 並べ方：長い言葉(場所の名前)ほど重く数える。名前に入っていれば高く、住所や近くにあれば少し
+  // 並べ方：言葉が複数あるときは、すべての言葉に当てはまるもの(名前・住所・近く3km以内)だけを出す
   const nt=toks.map(norm),W=nt.map(t=>Math.min(6,1+t.length/3));
-  cand.forEach(x=>{const nn=norm(x.name),nw=norm(x.where);let sc=x.hint?50:0;
-    nt.forEach((t,i)=>{if(nn.includes(t))sc+=3*W[i];else if(nw.includes(t))sc+=2*W[i];
-      else if(x.nearBase||(perTok[i]&&perTok[i].some(y=>near(x,y,3))))sc+=2*W[i];});
-    if(nn===nq)sc+=20;else if(nn.includes(nq))sc+=10; x.sc=sc;});
-  cand.sort((a,b)=>b.sc-a.sc);
-  const out=[];for(const x of cand){if(toks.length>1&&x.sc<3)continue;if(!x.hint&&out.some(o=>!o.hint&&o.name===x.name&&near(o,x,.3)))continue;out.push(x);if(out.length>=30)break;}
+  const tokHits=nt.map((t,i)=>(perTok[i]||[]).filter(y=>norm(y.name).includes(t)));
+  cand.forEach(x=>{const nn=norm(x.name),nw=norm(x.where);let sc=0,ok=0;
+    nt.forEach((t,i)=>{let hit=0;if(nn.includes(t)){sc+=3*W[i];hit=1;}else if(nw.includes(t)){sc+=2*W[i];hit=1;}
+      else if(x.nearBase||tokHits[i].some(y=>near(x,y,3))){sc+=2*W[i];hit=1;}ok+=hit;});
+    if(nn===nq)sc+=20;else if(nn.includes(nq))sc+=10;x.sc=sc;x.all=ok===nt.length;});
+  cand.sort((a,b)=>(b.hint?1:0)-(a.hint?1:0)||b.sc-a.sc);
+  let pool=toks.length>1?cand.filter(x=>x.all||x.hint):cand;
+  // ひとつも当てはまらないときは、いちばん長い言葉(場所の名前)に当てはまるものだけ
+  if(toks.length>1&&!pool.length){const lt=norm(toks.slice().sort((a,b)=>b.length-a.length)[0]);pool=cand.filter(x=>norm(x.name).includes(lt));}
+  const out=[];for(const x of pool){if(!x.hint&&out.some(o=>!o.hint&&o.name===x.name&&near(o,x,.3)))continue;out.push(x);if(out.length>=30)break;}
   showResults(out.map(x=>({name:x.name,lat:x.lat,lon:x.lon,sub:[x.where,x.kind].filter(Boolean).join("・")})));
   if(!out.length){note.hidden=false;note.textContent=failed?"この画面ではネット検索が使えません。iPhoneのアプリ(askayuzuki.github.io/leyline-finder)から探すか、下の「geocodingで探す」を押してください。":"見つかりませんでした。言葉を短くするか、下の「geocodingで探す」を押してください。";}
 }
