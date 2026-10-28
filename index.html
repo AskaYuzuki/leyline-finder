@@ -207,7 +207,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
           <a class="btn small" id="gmap" href="https://www.google.com/maps" target="_blank" rel="noopener" style="align-self:flex-start;text-decoration:none">Googleマップで探す</a>
-          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)の地名から探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>見つからないときは「Googleマップで探す」を押し、Googleマップで場所を長押しして出る数字(例 34.5083, 136.7885)をコピーして、ここに貼り付けてください。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
+          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)の地名から探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br><b>Googleマップから持ってくる方法</b>：「Googleマップで探す」で場所を開く → 「共有」→「コピー」→ この検索欄を長押しして「ペースト」。名前と住所を読み取って、その場所の位置合わせの画面に進みます。Googleマップで地図を長押ししたときに出る数字(例 34.5083, 136.7885)を貼り付けても大丈夫です。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
           <div class="row" style="justify-content:space-between">
@@ -321,7 +321,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
     <div class="buildbar placebar" id="placebar" hidden>
       <p class="step" id="placeStep">位置を合わせる</p>
       <input type="text" id="placeName" aria-label="場所の名前" placeholder="場所の名前">
-      <p class="help" style="margin:0">地図を動かして、十字の中心をピンを立てたい場所にぴったり合わせてください。拡大・縮小もできます。</p>
+      <p class="help" style="margin:0">地図を動かして、十字をぴったりの場所に合わせてください。</p>
       <p class="note" id="placeCoord" style="margin:0;font-variant-numeric:tabular-nums"></p>
       <p style="margin:0;font-weight:700">この場所でよいですか？</p>
       <div class="row">
@@ -663,8 +663,22 @@ function renderAll(){renderPinList();renderLines();renderSun();renderMapTab();re
 
 /* ============ 検索 ============ */
 function parseCoord(q){
-  let m=q.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)||q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)||q.match(/^\s*(-?\d{1,2}\.\d+)\s*[,，、\s]\s*(-?\d{1,3}\.\d+)\s*$/);
+  q=q.normalize("NFKC");
+  let m=q.match(/[?&](?:q|ll|query|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i)||q.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)||q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)||q.match(/^\s*(-?\d{1,2}\.\d+)\s*[,，、\s]\s*(-?\d{1,3}\.\d+)\s*$/);
+  if(!m) m=q.match(/(?:^|[^\d.])(\d{2}\.\d{3,})\s*[,，、\s]\s*(1[2-5]\d\.\d{3,})(?![\d.])/);
   if(m){const lat=+m[1],lon=+m[2];if(Math.abs(lat)<=90&&Math.abs(lon)<=180)return {lat,lon};}return null;}
+/* Googleマップの「共有→コピー」の文章から、名前と住所を取り出す */
+const PREF_RE=/(北海道|東京都|京都府|大阪府|(?:青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)県)/;
+function parseShared(raw){
+  const t=raw.normalize("NFKC");
+  if(!/(google|goo\.gl)/i.test(t)&&!/〒\s*\d{3}-?\d{4}/.test(t)&&!(PREF_RE.test(t)&&/\d/.test(t)))return null;
+  const noUrl=t.replace(/https?:\/\/\S+/g," ");
+  const pm=noUrl.match(PREF_RE);if(!pm)return {name:noUrl.split(/[\n·]/)[0].trim(),addr:""};
+  const i=pm.index;
+  let addr=noUrl.slice(i).split(/[\n·]/)[0].replace(/\s+/g,"").trim();
+  let name=noUrl.slice(0,i).replace(/〒\s*\d{3}-?\d{4}/,"").split(/\n/).map(x=>x.replace(/[·,、]/g," ").trim()).filter(Boolean)[0]||"";
+  name=name.replace(/\s+/g," ").trim();
+  return {name,addr};}
 /* ---- ネット検索(OpenStreetMapの地名検索 Photon・Nominatim、国土地理院の住所検索)。独自のデータは持たない ---- */
 const VAR={"氣":"気","彌":"弥","鹽":"塩","竈":"釜","竃":"釜","嶋":"島","嶌":"島","澤":"沢","濱":"浜","國":"国","瀧":"滝","邊":"辺","邉":"辺","廣":"広","櫻":"桜","寶":"宝","靈":"霊","龍":"竜","髙":"高","﨑":"崎","嵜":"崎","辨":"弁","ヶ":"ケ","ヵ":"ケ","が":"ケ"};
 const norm=t=>(t||"").normalize("NFKC").replace(/[\s・･,，、。()（）「」『』\[\]【】〈〉"'’‐－―\-]/g,"").replace(/./g,c=>VAR[c]||c).toLowerCase();
@@ -683,6 +697,13 @@ async function doSearch(q){
   const my=++searchSeq;q=q.trim();const note=$("searchNote");note.hidden=true;
   $("gmap").href="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q||"神社");
   if(!q){$("results").innerHTML="";return;}
+  const sh=parseShared(q);
+  if(sh&&sh.addr){$("results").innerHTML=`<div class="note" style="padding:8px 10px">住所から場所を探しています…</div>`;
+    const g=await gsiAddr(sh.addr);if(my!==searchSeq)return;
+    if(g&&g.length){searchSeq++;$("results").innerHTML="";$("q").value="";
+      startPlace({lat:g[0].lat,lon:g[0].lon,name:sh.name||g[0].name,zoom:18});toast("住所の位置に移動しました。十字を正確な場所に合わせてください");return;}
+    if(sh.name){q=sh.name;}}
+  else if(sh&&sh.name&&!parseCoord(q)){q=sh.name;}
   const c=parseCoord(q);
   if(c){showResults([{name:`座標 ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`,lat:c.lat,lon:c.lon,sub:"座標"}]);return;}
   $("results").innerHTML=`<div class="note" style="padding:8px 10px">さがしています…</div>`;
@@ -708,6 +729,8 @@ async function doSearch(q){
 }
 function showResults(arr){lastResults=arr;$("results").innerHTML=arr.map((r,i)=>`<button data-res="${i}"><span>${esc(r.name)}</span><small>${esc(r.sub||"")}</small></button>`).join("");}
 let qT;$("q").addEventListener("input",e=>{clearTimeout(qT);$("gmap").href="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(e.target.value.trim()||"神社");qT=setTimeout(()=>doSearch(e.target.value),600);});
+$("q").addEventListener("paste",e=>{const t=(e.clipboardData||window.clipboardData)?.getData("text");if(!t)return;
+  if(/\n/.test(t)||/(google|goo\.gl)/i.test(t)){e.preventDefault();$("q").value=t.replace(/\s*\n\s*/g," ");clearTimeout(qT);doSearch(t);}});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doSearch(e.target.value);}});
 $("results").addEventListener("click",e=>{const b=e.target.closest("[data-res]");if(!b)return;const r=lastResults[+b.dataset.res];
   searchSeq++;clearTimeout(qT);$("results").innerHTML="";
@@ -752,10 +775,12 @@ function startPlace(o){
   setBaseBtn(!!(o.editId&&S.sun.on&&S.sun.base===o.editId));
   $("cross").hidden=false;$("placebar").hidden=false;document.querySelector(".mapbar").hidden=true;
   if(window.innerWidth<900){$("panel").classList.add("min");syncChev();}
-  setTimeout(()=>{map.resize();map.jumpTo({center:[o.lon,o.lat],zoom:Math.min(18,o.zoom||16)});updCoord();},60);
+  setTimeout(()=>{map.resize();const bh=$("placebar").offsetHeight+24;
+    map.setPadding({top:0,left:0,right:0,bottom:bh});$("cross").style.top=`calc((100% - ${bh}px) / 2)`;
+    map.jumpTo({center:[o.lon,o.lat],zoom:Math.min(18,o.zoom||16)});updCoord();},60);
   if(o.editId&&pinMarkers[o.editId])pinMarkers[o.editId].getElement().style.opacity=".35";
 }
-function endPlace(){place=null;$("cross").hidden=true;$("placebar").hidden=true;document.querySelector(".mapbar").hidden=false;
+function endPlace(){place=null;map.setPadding({top:0,left:0,right:0,bottom:0});$("cross").hidden=true;$("placebar").hidden=true;document.querySelector(".mapbar").hidden=false;
   Object.values(pinMarkers).forEach(m=>m.getElement().style.opacity="");
   $("panel").classList.remove("min");syncChev();setTimeout(()=>map.resize(),280);}
 $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim();
