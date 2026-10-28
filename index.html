@@ -82,7 +82,7 @@ input[type=search]{width:100%}
 .check{display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px}
 .check input{accent-color:var(--star);width:16px;height:16px}
 .srow{display:flex;gap:6px}
-.georow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.georow{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .georow small{color:var(--muted);font-size:12px}
 .qwrap{flex:1;min-width:0;position:relative}
 .qwrap input{width:100%;padding-right:40px}
@@ -247,10 +247,10 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
         <div class="group">
           <h2>場所をさがす</h2>
           <div class="srow"><div class="qwrap"><input type="search" id="q" enterkeyhint="search" placeholder="神社・古墳・遺跡などの名前、住所" autocomplete="off"><button class="qclr" id="qClr" aria-label="入力を消す" hidden><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="#0a1422" stroke-width="2.2" stroke-linecap="round"/></svg></button></div><button class="btn gold" id="qGo" aria-label="検索">🔎</button></div>
-          <div class="georow"><small>見つからないときは</small><button class="btn small" id="geoBtn">geocodingで探す</button></div>
+          <div class="georow"><small>見つからないときは</small><button class="btn small" id="geoBtn">Geocodingで探す</button></div>
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
-          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>見つからないときは「geocodingで探す」を押すと、geocoding.jp(Googleマップの検索結果)で場所を探します。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
+          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>見つからないときは「Geocodingで探す」を押すと、geocoding.jp(Googleマップの検索結果)で場所を探します。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
           <div class="row" style="justify-content:space-between">
@@ -552,7 +552,7 @@ const clearCands=()=>showCands([]);
 /* ---- 目印の読み込み：縮尺1km程度でも出せるよう、細かい地図データ(ズーム14)を直接読んで神社・古墳・遺跡だけ取り出す ---- */
 const INFO_CLS=new Set(["information","parking","bus","railway","shop","restaurant","cafe","fast_food","lodging","toilets","school","office","post","bank","grocery","clothing_store","hairdresser"]);
 function classifyPoi(p){const n=p["name:ja"]||p.name||"";if(p.class==="place_of_worship")return p.subclass==="shinto"?"shrine":null;
-  if(!n||INFO_CLS.has(p.class))return null;
+  if(!n||INFO_CLS.has(p.class)||/警察|駐在|交番|駅|学校|郵便|病院|資料館|壁画館|博物館|公園|周辺地区/.test(n))return null;
   if(/古墳|陵|塚/.test(n))return "kofun";
   if(/遺跡|史跡|跡/.test(n)&&!/駐車|バス/.test(n))return "iseki";return null;}
 /* 地図データ(Mapbox Vector Tile)の中から点だけを読む小さな読み取り器 */
@@ -613,10 +613,14 @@ async function overpassCells(cells){
   if(miss.length){const S_=Math.min(...miss.map(c=>c[0]))*CELL,W_=Math.min(...miss.map(c=>c[1]))*CELL,N_=(Math.max(...miss.map(c=>c[0]))+1)*CELL,E_=(Math.max(...miss.map(c=>c[1]))+1)*CELL;
     const bb=`${S_.toFixed(3)},${W_.toFixed(3)},${N_.toFixed(3)},${E_.toFixed(3)}`;
     const q=`[out:json][timeout:20];(nwr["historic"~"^(archaeological_site|tomb|ruins|castle)$"]["name"](${bb});nwr["historic"~"^(memorial|monument|boundary_stone)$"]["name"~"跡|史跡|古墳"](${bb});nwr["site_type"="tumulus"]["name"](${bb}););out center tags qt;`;
-    let els=null;for(const u of OP_URLS){const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),12000);
+    let els=null;
+    // まず中継役(Cloudflare)経由で聞く。つながらないときだけ直接
+    if(RELAY){const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),15000);
+      try{const r=await fetch(`${RELAY}/hist?bb=${bb}`,{signal:ac.signal});if(r.ok){const j=await r.json();if(j.ok)els=j.items;}}catch(e){}finally{clearTimeout(tm);}}
+    if(!els)for(const u of OP_URLS){const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),12000);
       try{const r=await fetch(u,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ac.signal});if(!r.ok)continue;els=(await r.json()).elements||[];break;}catch(e){}finally{clearTimeout(tm);}}
     if(els){const per=new Map(miss.map(c=>[c.join(),[]]));
-      els.forEach(e=>{const la=e.lat??(e.center&&e.center.lat),lo=e.lon??(e.center&&e.center.lon);if(la==null)return;const k=classifyHist(e.tags||{});if(!k)return;
+      els.forEach(e=>{const la=e.lat??(e.center&&e.center.lat),lo=e.lon??(e.center&&e.center.lon);e.tags=e.tags||{};if(la==null)return;const k=classifyHist(e.tags||{});if(!k)return;
         const key=Math.floor(la/CELL)+","+Math.floor(lo/CELL);if(!per.has(key))return;
         per.get(key).push({type:"Feature",properties:{k,n:(e.tags["name:ja"]||e.tags.name)},geometry:{type:"Point",coordinates:[+lo.toFixed(6),+la.toFixed(6)]}});});
       for(const[key,fs]of per){out.set(key,fs);const[a,b]=key.split(",");poiStorePut("op/"+a+"/"+b,fs);}}}
@@ -984,7 +988,7 @@ async function doSearch(q){
   if(toks.length>1&&!pool.length){const lt=norm(toks.slice().sort((a,b)=>b.length-a.length)[0]);pool=cand.filter(x=>norm(x.name).includes(lt));}
   const out=[];for(const x of pool){if(!x.hint&&out.some(o=>!o.hint&&o.name===x.name&&near(o,x,.3)))continue;out.push(x);if(out.length>=30)break;}
   showResults(out.map(x=>({name:x.name,lat:x.lat,lon:x.lon,sub:[x.where,x.kind].filter(Boolean).join("・")})));
-  if(!out.length){note.hidden=false;note.textContent=failed?"この画面ではネット検索が使えません。iPhoneのアプリ(askayuzuki.github.io/leyline-finder)から探すか、下の「geocodingで探す」を押してください。":"見つかりませんでした。言葉を短くするか、下の「geocodingで探す」を押してください。";}
+  if(!out.length){note.hidden=false;note.textContent=failed?"この画面ではネット検索が使えません。iPhoneのアプリ(askayuzuki.github.io/leyline-finder)から探すか、「Geocodingで探す」を押してください。":"見つかりませんでした。言葉を短くするか、「Geocodingで探す」を押してください。";}
 }
 function showResults(arr){arr.forEach(r=>{r.name=(r.name||"").normalize("NFKC");r.sub=(r.sub||"").normalize("NFKC");});lastResults=arr;
   $("results").innerHTML=arr.map((r,i)=>`<button data-res="${i}"><span class="rn">${i+1}</span><span class="rt">${esc(r.name)}</span><small>${esc(r.sub||"")}</small></button>`).join("");
@@ -1083,18 +1087,29 @@ $("pinlist").addEventListener("click",e=>{const b=e.target.closest("[data-mv]");
 /* ---- 中継役(Cloudflare)：geocoding.jp と GoogleマップのURL ---- */
 const RELAY="https://leyline-relay.future-awakening-project.workers.dev";
 let geoLast=0;
-$("geoBtn").onclick=async()=>{const q=$("q").value.trim().normalize("NFKC");
-  if(!q){toast("探したい場所の名前を入れてから押してください");$("q").focus();return;}
-  if(!RELAY){toast("geocodingで探す機能は、いま準備中です");return;}
-  const wait=10000-(Date.now()-geoLast);if(wait>0){toast(`geocodingは10秒に1回までです。あと${Math.ceil(wait/1000)}秒お待ちください`);return;}
-  geoLast=Date.now();const b=$("geoBtn");b.disabled=true;b.textContent="さがしています…";
-  try{const r=await fetch(`${RELAY}/geo?q=${encodeURIComponent(q)}`);const j=await r.json();
-    if(j.ok){searchSeq++;$("results").innerHTML="";clearCands();$("searchNote").hidden=true;
-      const where=(j.place||"").replace(/〒?\d{3}-?\d{4}/,"").trim();
-      startPlace({lat:j.lat,lon:j.lng,name:q,where:where.split(" ")[0]||"",zoom:18});toast("geocodingで見つかった場所です。十字を正確な位置に合わせてください");}
-    else{$("searchNote").hidden=false;$("searchNote").textContent="geocodingでも見つかりませんでした。言葉を変えて試してください。";}}
-  catch(e){toast("geocodingにつながりませんでした。少し待ってからもう一度押してください");}
-  finally{b.textContent="geocodingで探す";setTimeout(()=>b.disabled=false,1500);}};
+$("geoBtn").onclick=()=>{
+  if(!RELAY){toast("Geocodingで探す機能は、いま準備中です");return;}
+  const m=$("modal");const q0=$("q").value.trim();
+  m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="Geocodingで探す" style="max-width:440px;width:100%;position:relative">
+    <button class="xbtn" id="gcClose" aria-label="閉じる" title="閉じる"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+    <h3 style="padding-right:40px">Geocodingで探す</h3>
+    <p class="help" style="margin:0">Googleマップの検索結果をもとに場所を探します(geocoding.jp)。10秒に1回まで使えます。</p>
+    <div class="srow"><div class="qwrap"><input type="search" id="gcQ" enterkeyhint="search" placeholder="神社・古墳・遺跡などの名前、住所" value="${esc(q0)}"></div><button class="btn gold" id="gcGo" aria-label="検索">🔎</button></div>
+    <p class="note" id="gcNote" hidden style="margin:0"></p></div>`;
+  m.hidden=false;const close=()=>{m.hidden=true;m.innerHTML="";};
+  $("gcClose").onclick=close;setTimeout(()=>{try{$("gcQ").focus();}catch(e){}},50);
+  const go=async()=>{const q=$("gcQ").value.trim().normalize("NFKC");const note=$("gcNote");
+    if(!q){note.hidden=false;note.textContent="探したい場所の名前を入れてください";return;}
+    const wait=10000-(Date.now()-geoLast);if(wait>0){note.hidden=false;note.textContent=`10秒に1回までです。あと${Math.ceil(wait/1000)}秒お待ちください`;return;}
+    geoLast=Date.now();const b=$("gcGo");b.disabled=true;note.hidden=false;note.textContent="さがしています…";
+    try{const r=await fetch(`${RELAY}/geo?q=${encodeURIComponent(q)}`);const j=await r.json();
+      if(j.ok){close();searchSeq++;$("q").value=q;syncClr();$("searchNote").hidden=true;showTab("pins");$("panel").classList.remove("min");syncChev();
+        const where=(j.place||"").replace(/〒?\d{3}-?\d{4}/,"").trim();
+        showResults([{name:q,lat:j.lat,lon:j.lng,sub:(where.split(/\s/)[0]||"")+"・Geocoding"}]);toast("Geocodingで見つかりました。選ぶと位置合わせに進みます");}
+      else{note.textContent="見つかりませんでした。言葉を変えて試してください。";}}
+    catch(e){note.textContent="Geocodingにつながりませんでした。少し待ってからもう一度押してください。";}
+    finally{if($("gcGo"))setTimeout(()=>{if($("gcGo"))$("gcGo").disabled=false;},1500);}};
+  $("gcGo").onclick=go;$("gcQ").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();go();}});};
 async function expandGoogle(u){if(!RELAY)return null;try{const r=await fetch(`${RELAY}/expand?u=${encodeURIComponent(u)}`);const j=await r.json();return j.ok?j:null;}catch(e){return null;}}
 $("restorePrev").onclick=()=>{const p=S.prev;if(!p)return;S.pins=p.pins;S.lines=p.lines||[];S.sun.base=p.base;
   S.seq.pin=Math.max(S.seq.pin,...S.pins.map(x=>x.id+1));S.seq.line=Math.max(S.seq.line,...S.lines.map(x=>x.id+1),1);save();renderAll();fitAll();};
