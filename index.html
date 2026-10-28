@@ -72,6 +72,9 @@ input[type=text],input[type=search],input[type=number],select{background:#0a1422
 input[type=search]{width:100%}
 .check{display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px}
 .check input{accent-color:var(--star);width:16px;height:16px}
+.srow{display:flex;gap:6px}
+.srow input{flex:1;min-width:0}
+.srow .btn{padding:6px 14px;font-size:18px}
 .results{display:flex;flex-direction:column;border:1px solid var(--night-3);border-radius:8px;overflow:auto;max-height:320px}
 .results:empty{display:none}
 .results button{all:unset;cursor:pointer;padding:8px 10px;border-top:1px solid var(--night-3);display:flex;justify-content:space-between;gap:10px;font-size:13px}
@@ -87,6 +90,8 @@ input[type=search]{width:100%}
 .pinitem input{width:100%;background:transparent;border:0;border-bottom:1px dashed transparent;border-radius:0;padding:2px 0;font-weight:500}
 .pinitem input:hover,.pinitem input:focus{border-bottom-color:var(--night-3)}
 .pinitem .coord{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.num.drag{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.pinitem.dragging{opacity:.85;border-color:var(--star);box-shadow:0 6px 18px rgba(0,0,0,.4);position:relative;z-index:2}
 .pinitem .acts{display:flex;gap:4px;flex-wrap:wrap;grid-column:2}
 .pinitem .pname{font-weight:500;padding:2px 0;overflow-wrap:anywhere}
 
@@ -210,7 +215,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
       <section class="tab" id="tab-pins">
         <div class="group">
           <h2>場所をさがす</h2>
-          <input type="search" id="q" placeholder="神社・古墳・磐座などの名前、住所、座標" autocomplete="off">
+          <div class="srow"><input type="search" id="q" enterkeyhint="search" placeholder="神社・古墳・磐座などの名前、住所、座標" autocomplete="off"><button class="btn gold" id="qGo" aria-label="検索">🔎</button></div>
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
           <button class="btn small" id="gmapBtn" style="align-self:flex-start">Googleマップで探す</button>
@@ -219,7 +224,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
             <div class="row"><button class="btn gold small" id="gpaste">コピーした場所を貼り付ける</button><button class="btn small" id="gbackClose">閉じる</button></div>
             <p class="note" style="margin:0">うまくいかないときは、上の検索欄を長押しして「ペースト」を押してください。</p>
           </div>
-          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)の地名から探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>ここで見つからない場所は「Googleマップで探す」から。押すと、Googleマップから持ってくる手順が出ます。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
+          <p class="help">ピンの順番は、「立てたピン」の番号を押したまま上下に動かすか、▲▼で入れ替えられます。<br>①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)の地名から探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>ここで見つからない場所は「Googleマップで探す」から。押すと、Googleマップから持ってくる手順が出ます。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
           <div class="row" style="justify-content:space-between">
@@ -335,10 +340,10 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
       <p class="step" id="placeStep">位置を合わせる</p>
       <input type="text" id="placeName" aria-label="場所の名前" placeholder="場所の名前">
       <p class="help" style="margin:0">地図を動かして、十字をぴったりの場所に合わせてください。</p>
-      <p class="note" id="placeCoord" style="margin:0;font-variant-numeric:tabular-nums"></p>
+      <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><p class="note" id="placeCoord" style="margin:0;font-variant-numeric:tabular-nums"></p><button class="btn small" id="placeSat" style="flex:none">航空写真で見る</button></div>
       <p style="margin:0;font-weight:700">この場所でよいですか？</p>
       <div class="row">
-        <button class="btn gold" id="placeOk">この場所でOK<br>（固定する）</button>
+        <button class="btn gold" id="placeOk">この場所でOK<br>(固定する)</button>
         <button class="btn" id="placeBase" aria-pressed="false">☀ 太陽の道の<br>基点にする</button>
       </div>
 
@@ -524,6 +529,9 @@ function renderMap(){
 function renderPins(){
   const keep=new Set(S.pins.map(p=>p.id));
   Object.keys(pinMarkers).forEach(id=>{if(!keep.has(+id)){pinMarkers[id].remove();delete pinMarkers[id];}});
+  // 念のため、どのピンにも属さない番号の表示が残っていたら取り除く
+  const live=new Set(Object.values(pinMarkers).map(m=>m.getElement()));
+  document.querySelectorAll("#map .pm").forEach(el=>{if(!live.has(el))el.remove();});
   S.pins.forEach((p,i)=>{
     let mk=pinMarkers[p.id];
     if(!mk){const el=document.createElement("div");el.className="pm";el.tabIndex=0;el.setAttribute("role","button");
@@ -560,7 +568,7 @@ function clearExample(){if(S.example){S.example=false;}}
 function addPin({lat,lon,name}){
   if(S.pins.length>=MAXP){toast("ピンは10個までです。いらないピンを消してから立ててください。");return null;}
   clearExample();
-  const id=S.seq.pin++; const p={id,lat,lon,name:name||`ピン${S.pins.length+1}`};
+  const id=S.seq.pin++; const p={id,lat,lon,name:(name||`ピン${S.pins.length+1}`).normalize("NFKC")};
   S.pins.push(p); if(S.sun.base==null||!pinById(S.sun.base)) S.sun.base=id;
   selPin=id; save(); renderAll();
   return p;}
@@ -568,6 +576,8 @@ function removePin(id){
   S.pins=S.pins.filter(p=>p.id!==id);
   S.lines.forEach(L=>L.pins=L.pins.filter(x=>x!==id)); S.lines=S.lines.filter(L=>L.pins.length>=2);
   if(S.sun.base===id) S.sun.base=S.pins[0]?S.pins[0].id:null;
+  if(pinMarkers[id]){pinMarkers[id].remove();delete pinMarkers[id];}
+  if(pop){try{pop.remove();}catch(e){}}
   if(selPin===id) selPin=null; save(); renderAll();}
 function pinTapped(id){
   if(place) return;
@@ -623,12 +633,12 @@ function showTab(t){document.querySelectorAll(".tabs button").forEach(b=>b.setAt
 function renderPinList(){
   $("pinCount").textContent=`${S.pins.length}/${MAXP}`;
   $("pinEmpty").hidden=S.pins.length>0;
-  const rp=$("restorePrev");rp.hidden=!(S.prev&&S.prev.pins.length&&!S.pins.length);if(!rp.hidden)rp.textContent=`前回のピン（${S.prev.pins.length}か所）を呼び出す`;
+  const rp=$("restorePrev");rp.hidden=!(S.prev&&S.prev.pins.length&&!S.pins.length);if(!rp.hidden)rp.textContent=`前回のピン(${S.prev.pins.length}か所)を呼び出す`;
   $("pinlist").innerHTML=S.pins.map((p,i)=>`<li class="pinitem${selPin===p.id?" sel":""}" data-pin="${p.id}">
-    <span class="num">${i+1}</span>
+    <span class="num drag" data-drag="${p.id}" title="押したまま上下に動かすと順番を入れ替えられます">${i+1}</span>
     <div style="min-width:0"><div class="pname">${esc(p.name)}</div>
     <div class="coord">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div></div>
-    <div class="acts"><button class="btn small" data-go="${p.id}" title="地図で見る">見る</button><button class="btn small" data-fix="${p.id}" title="位置を合わせ直す">位置を直す</button><button class="btn small danger" data-del="${p.id}" aria-label="ピン${i+1}を消す">消す</button></div></li>`).join("");}
+    <div class="acts"><button class="btn small" data-mv="${p.id}:-1" ${i===0?"disabled":""} aria-label="ひとつ上へ">▲</button><button class="btn small" data-mv="${p.id}:1" ${i===S.pins.length-1?"disabled":""} aria-label="ひとつ下へ">▼</button><button class="btn small" data-go="${p.id}" title="地図で見る">見る</button><button class="btn small" data-fix="${p.id}" title="位置を合わせ直す">位置を直す</button><button class="btn small danger" data-del="${p.id}" aria-label="ピン${i+1}を消す">消す</button></div></li>`).join("");}
 function renderPinChipsForBuild(){/* ライン画面のピン選び(作成中のみ) */
   const host=$("buildChips"); if(!host) return;
   host.innerHTML=S.pins.map((p,i)=>{const k=build?build.indexOf(p.id):-1;return `<button class="chip" aria-pressed="${k>=0}" data-pick="${p.id}">${k>=0?`<span class="o">${k+1}.</span>`:""}${i+1} ${esc(p.name)}</button>`}).join("");}
@@ -671,7 +681,7 @@ function renderSun(){
     `<p class="help">ずれ${tol}km以内で太陽の道に乗っているピンはありません(許容はライン画面で変えられます)。</p>`;
 }
 function renderMapTab(){document.querySelectorAll('input[name=base]').forEach(r=>r.checked=r.value===S.base);$("relief").checked=S.relief;$("labels").checked=S.labels;$("names").checked=S.names;$("tol").value=S.tol;}
-function renderAll(){renderPinList();renderLines();renderSun();renderMapTab();renderMap();
+function renderAll(){[renderPinList,renderLines,renderSun,renderMapTab,renderMap].forEach(f=>{try{f();}catch(e){console.error(e);}});
   $("tapAdd").setAttribute("aria-pressed",String(!!S.tapAdd));}
 
 /* ============ 検索 ============ */
@@ -705,6 +715,11 @@ async function nominatim(q,limit){try{const r=await fetch(`https://nominatim.ope
 async function gsiAddr(q){try{const r=await fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q));const j=await r.json();
   return j.slice(0,6).map(h=>({name:h.properties.title,lat:h.geometry.coordinates[1],lon:h.geometry.coordinates[0],where:"",kind:"住所"}));}catch(e){return null;}}
 const near=(a,b,km)=>dist(a,b)<=km;
+const FEAT_RE=/(御神木|ご神木|神木|夫婦杉|大杉|大楠|磐座|岩座|古墳|遺跡|史跡|本殿|拝殿|奥宮|奥社|摂社|末社|鳥居|御柱|夫婦岩|霊石|要石|湧水|御神水|の滝|の池|の杜)/;
+async function photonNear(q,c,d){try{const r=await fetch(`https://photon.komoot.io/api/?limit=15&bbox=${c.lon-d},${c.lat-d},${c.lon+d},${c.lat+d}&q=${encodeURIComponent(q)}`);const j=await r.json();
+  return (j.features||[]).map(f=>{const p=f.properties,[lo,la]=f.geometry.coordinates;return {name:p.name||"",lat:la,lon:lo,where:[p.state,p.city].filter(Boolean).join(" "),kind:KIND[p.osm_value]||""};}).filter(x=>x.name);}catch(e){return null;}}
+async function wiki(q){try{const r=await fetch(`https://ja.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=6&gsrsearch=${encodeURIComponent(q)}&prop=coordinates&colimit=6`);const j=await r.json();
+  return Object.values((j.query&&j.query.pages)||{}).filter(p=>p.coordinates&&p.coordinates[0]).sort((a,b)=>a.index-b.index).map(p=>({name:p.title,lat:p.coordinates[0].lat,lon:p.coordinates[0].lon,where:"",kind:"Wikipedia"})).filter(x=>inJP(x.lat,x.lon));}catch(e){return null;}}
 let searchSeq=0,lastResults=[];
 async function doSearch(q){
   const my=++searchSeq;q=q.trim();const note=$("searchNote");note.hidden=true;
@@ -719,28 +734,45 @@ async function doSearch(q){
   const c=parseCoord(q);
   if(c){showResults([{name:`座標 ${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`,lat:c.lat,lon:c.lon,sub:"座標"}]);return;}
   $("results").innerHTML=`<div class="note" style="padding:8px 10px">さがしています…</div>`;
-  const toks=q.normalize("NFKC").split(/[\s　]+/).filter(Boolean);
-  // 言葉が複数あるときは、全体と、言葉ごとにも探す
-  const jobs=[photon(q,15),nominatim(q,8)];
-  if(toks.length>1) toks.forEach(t=>jobs.push(photon(t,40)));
-  const got=await Promise.all(jobs); if(my!==searchSeq) return;
-  const failed=got.every(g=>g===null);
-  const perTok=toks.length>1?got.slice(2):[];
-  let cand=[].concat(...got.map(g=>g||[]));
+  q=q.normalize("NFKC");
+  const nq=norm(q);
+  let toks=q.split(/\s+/).filter(Boolean);
+  // 1回目：そのままの言葉で探す
+  const first=await Promise.all([photon(q,15),nominatim(q,8),wiki(q)]); if(my!==searchSeq) return;
+  const failed=first.every(g=>g===null);
+  let cand=[].concat(...first.map(g=>g||[]));
+  const exact=cand.some(x=>norm(x.name).includes(nq));
+  // 区切りがなく、名前どおりの結果がないときは「場所＋御神木・磐座など」に分ける
+  let split=false;
+  if(!exact&&toks.length===1){const m=q.match(FEAT_RE);if(m&&m.index>1){toks=[q.slice(0,m.index),q.slice(m.index)];split=true;}}
+  let perTok=[];
+  if(!exact&&toks.length>1){
+    const placeTok=toks.filter(t=>!FEAT_RE.test(t)).sort((a,b)=>b.length-a.length)[0]||toks[0];
+    const second=await Promise.all([...toks.map(t=>photon(t,40)),wiki(placeTok),nominatim(placeTok,5)]); if(my!==searchSeq) return;
+    perTok=second.slice(0,toks.length);
+    second.forEach(g=>(g||[]).forEach(x=>cand.push(x)));
+    // 「場所」が見つかったら、そのまわり(約3km)で御神木・磐座などを探す
+    const feats=toks.filter(t=>t!==placeTok&&FEAT_RE.test(t));
+    const pt=norm(placeTok),base=cand.find(x=>norm(x.name).includes(pt));
+    if(split&&base&&feats.length){
+      const extra=await Promise.all(feats.map(t=>photonNear(t,base,0.03))); if(my!==searchSeq) return;
+      let hit=0;extra.forEach((g,i)=>(g||[]).forEach(x=>{const f=norm(feats[i]).replace(/^ご/,"御");if(norm(x.name).includes(f)||norm(x.name).includes(f.replace(/^御/,""))){x.nearBase=1;cand.push(x);hit++;}}));
+      if(!hit) cand.push({...base,kind:`${feats.join(" ")}の位置データがないため、${base.name}の位置を開きます。航空写真で合わせてください`,hint:1});}}
   if(!cand.length&&!failed){const g=await gsiAddr(q);if(my!==searchSeq)return;cand=g||[];}
-  // 並べ方：名前・住所に入っている言葉の数＋別の言葉の結果が近く(3km以内)にあるか
-  const nt=toks.map(norm);
-  cand.forEach(x=>{const nn=norm(x.name),nw=norm(x.where);let sc=0;
-    nt.forEach((t,i)=>{if(nn.includes(t))sc+=3;else if(nw.includes(t))sc+=2;
-      else if(perTok[i]&&perTok[i].some(y=>near(x,y,3)))sc+=2;});
-    if(nn===norm(q))sc+=4; x.sc=sc;});
+  // 並べ方：長い言葉(場所の名前)ほど重く数える。名前に入っていれば高く、住所や近くにあれば少し
+  const nt=toks.map(norm),W=nt.map(t=>Math.min(6,1+t.length/3));
+  cand.forEach(x=>{const nn=norm(x.name),nw=norm(x.where);let sc=x.hint?50:0;
+    nt.forEach((t,i)=>{if(nn.includes(t))sc+=3*W[i];else if(nw.includes(t))sc+=2*W[i];
+      else if(x.nearBase||(perTok[i]&&perTok[i].some(y=>near(x,y,3))))sc+=2*W[i];});
+    if(nn===nq)sc+=20;else if(nn.includes(nq))sc+=10; x.sc=sc;});
   cand.sort((a,b)=>b.sc-a.sc);
-  const out=[];for(const x of cand){if(toks.length>1&&x.sc<2)continue;if(out.some(o=>o.name===x.name&&near(o,x,.3)))continue;out.push(x);if(out.length>=30)break;}
+  const out=[];for(const x of cand){if(toks.length>1&&x.sc<3)continue;if(!x.hint&&out.some(o=>!o.hint&&o.name===x.name&&near(o,x,.3)))continue;out.push(x);if(out.length>=30)break;}
   showResults(out.map(x=>({name:x.name,lat:x.lat,lon:x.lon,sub:[x.where,x.kind].filter(Boolean).join("・")})));
   if(!out.length){note.hidden=false;note.textContent=failed?"この画面ではネット検索が使えません。iPhoneのアプリ(askayuzuki.github.io/leyline-finder)から探すか、下の「Googleマップで探す」を使ってください。":"見つかりませんでした。言葉を短くするか、下の「Googleマップで探す」を使ってください。";}
 }
-function showResults(arr){lastResults=arr;$("results").innerHTML=arr.map((r,i)=>`<button data-res="${i}"><span>${esc(r.name)}</span><small>${esc(r.sub||"")}</small></button>`).join("");}
-let qT;$("q").addEventListener("input",e=>{clearTimeout(qT);qT=setTimeout(()=>doSearch(e.target.value),600);});
+function showResults(arr){arr.forEach(r=>{r.name=(r.name||"").normalize("NFKC");r.sub=(r.sub||"").normalize("NFKC");});lastResults=arr;$("results").innerHTML=arr.map((r,i)=>`<button data-res="${i}"><span>${esc(r.name)}</span><small>${esc(r.sub||"")}</small></button>`).join("");}
+let qT;$("q").addEventListener("input",e=>{clearTimeout(qT);if(!e.target.value.trim()){$("results").innerHTML="";$("searchNote").hidden=true;}});
+$("qGo").onclick=()=>{clearTimeout(qT);$("q").blur();doSearch($("q").value);};
 $("q").addEventListener("paste",e=>{const t=(e.clipboardData||window.clipboardData)?.getData("text");if(!t)return;
   if(/\n/.test(t)||/(google|goo\.gl)/i.test(t)){e.preventDefault();$("q").value=t.replace(/\s*\n\s*/g," ");clearTimeout(qT);doSearch(t);}});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doSearch(e.target.value);}});
@@ -772,6 +804,29 @@ $("pinlist").addEventListener("click",e=>{const g=e.target.closest("[data-go]"),
   if(d){removePin(+d.dataset.del);}
   const fx=e.target.closest("[data-fix]");if(fx){const p=pinById(+fx.dataset.fix);startPlace({lat:p.lat,lon:p.lon,name:p.name,zoom:Math.max(map.getZoom(),17),editId:p.id});}});
 $("newLine").onclick=startBuild;
+/* ---- ピンの並び順の入れ替え(Googleマップの経由地のように) ---- */
+function applyOrder(ids){
+  const old=S.pins.map(p=>p.id);if(ids.join()===old.join())return;
+  S.pins=ids.map(pinById).filter(Boolean);
+  const pos=new Map(ids.map((id,i)=>[id,i]));
+  S.lines.forEach(L=>{if(L.mode==="path")L.pins.sort((a,b)=>pos.get(a)-pos.get(b));});
+  save();renderAll();toast("順番を入れ替えました");}
+$("pinlist").addEventListener("click",e=>{const b=e.target.closest("[data-mv]");if(!b)return;
+  const[id,d]=b.dataset.mv.split(":").map(Number);const ids=S.pins.map(p=>p.id),i=ids.indexOf(id),j=i+d;
+  if(j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];applyOrder(ids);});
+(()=>{const list=$("pinlist");let drag=null;
+  list.addEventListener("pointerdown",e=>{const h=e.target.closest("[data-drag]");if(!h)return;e.preventDefault();
+    const li=h.closest(".pinitem");drag={li,y0:e.clientY};li.classList.add("dragging");h.setPointerCapture(e.pointerId);});
+  list.addEventListener("pointermove",e=>{if(!drag)return;const{li}=drag;
+    li.style.transform=`translateY(${e.clientY-drag.y0}px)`;
+    const items=[...list.querySelectorAll(".pinitem")].filter(x=>x!==li);
+    for(const it of items){const r=it.getBoundingClientRect(),mid=r.top+r.height/2;
+      const before=li.compareDocumentPosition(it)&Node.DOCUMENT_POSITION_PRECEDING;
+      if(before&&e.clientY<mid){const top0=li.getBoundingClientRect().top;list.insertBefore(li,it);drag.y0+=li.getBoundingClientRect().top-top0;li.style.transform=`translateY(${e.clientY-drag.y0}px)`;break;}
+      if(!before&&e.clientY>mid){const top0=li.getBoundingClientRect().top;list.insertBefore(li,it.nextSibling);drag.y0+=li.getBoundingClientRect().top-top0;li.style.transform=`translateY(${e.clientY-drag.y0}px)`;}}});
+  const end=()=>{if(!drag)return;drag.li.style.transform="";drag.li.classList.remove("dragging");drag=null;
+    applyOrder([...list.querySelectorAll(".pinitem")].map(x=>+x.dataset.pin));renderPinList();};
+  list.addEventListener("pointerup",end);list.addEventListener("pointercancel",end);})();
 /* ---- Googleマップから場所を持ってくる案内 ---- */
 let gWent=false;
 $("gmapBtn").onclick=()=>{const q=$("q").value.trim();
@@ -817,7 +872,9 @@ function startPlace(o){
     map.jumpTo({center:[o.lon,o.lat],zoom:Math.min(18,o.zoom||16)});updCoord();},60);
   if(o.editId&&pinMarkers[o.editId])pinMarkers[o.editId].getElement().style.opacity=".35";
 }
-function endPlace(){place=null;map.setPadding({top:0,left:0,right:0,bottom:0});$("cross").hidden=true;$("placebar").hidden=true;document.querySelector(".mapbar").hidden=false;
+let satTemp=false;
+function setSat(on){satTemp=on;$("placeSat").textContent=on?"地図に戻す":"航空写真で見る";styleFor(on?"photo":S.base).then(st=>map.setStyle(st,{diff:false}));}
+function endPlace(){if(satTemp)setSat(false);place=null;map.setPadding({top:0,left:0,right:0,bottom:0});$("cross").hidden=true;$("placebar").hidden=true;document.querySelector(".mapbar").hidden=false;
   Object.values(pinMarkers).forEach(m=>m.getElement().style.opacity="");
   $("panel").classList.remove("min");syncChev();setTimeout(()=>map.resize(),280);}
 $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim();
@@ -829,6 +886,7 @@ $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim()
   if(S.pins.length<MAXP)setTimeout(()=>{try{$("q").focus({preventScroll:true});}catch(e){}},350);};
 function setBaseBtn(on){const b=$("placeBase");b.setAttribute("aria-pressed",String(on));b.innerHTML=on?"✓ 太陽の道の<br>基点にする":"☀ 太陽の道の<br>基点にする";}
 $("placeBase").onclick=()=>setBaseBtn($("placeBase").getAttribute("aria-pressed")!=="true");
+$("placeSat").onclick=()=>setSat(!satTemp);
 $("placeCancel").onclick=()=>{const o=place;endPlace();if(o&&!o.editId&&S.pins.length>=2)setTimeout(()=>fitAll(),300);};
 /* 位置合わせの枠を下へスワイプしても閉じる */
 (()=>{const bar=$("placebar");let y0=null,x0=0;
@@ -864,7 +922,7 @@ $("linelist").addEventListener("click",e=>{const m=e.target.closest("[data-mode]
 $("sunOn").onchange=e=>{S.sun.on=e.target.checked;save();renderAll();};
 $("sunBase").onchange=e=>{S.sun.base=e.target.value==="all"?"all":+e.target.value;save();renderAll();};
 $("sunTable").addEventListener("change",e=>{const k=e.target.dataset.sun;if(k){S.sun.show[k]=e.target.checked;if(e.target.checked)S.sun.on=true;save();renderAll();}});
-$("baseRadios").addEventListener("change",e=>{S.base=e.target.value;save();styleFor(S.base).then(st=>map.setStyle(st));});
+$("baseRadios").addEventListener("change",e=>{S.base=e.target.value;save();styleFor(S.base).then(st=>map.setStyle(st,{diff:false}));});
 $("relief").onchange=e=>{S.relief=e.target.checked;save();renderMap();};
 $("labels").onchange=e=>{S.labels=e.target.checked;save();renderMap();};
 $("names").onchange=e=>{S.names=e.target.checked;save();renderMap();};
