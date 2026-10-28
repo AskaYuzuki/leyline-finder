@@ -993,7 +993,7 @@ $("pinlist").addEventListener("click",e=>{const b=e.target.closest("[data-mv]");
     else renderPinList();};
   list.addEventListener("pointerup",end);list.addEventListener("pointercancel",end);})();
 /* ---- 中継役(Cloudflare)：geocoding.jp と GoogleマップのURL ---- */
-const RELAY="";  // 例 https://leyline-relay.xxxx.workers.dev
+const RELAY="https://leyline-relay.future-awakening-project.workers.dev";
 let geoLast=0;
 $("geoBtn").onclick=async()=>{const q=$("q").value.trim().normalize("NFKC");
   if(!q){toast("探したい場所の名前を入れてから押してください");$("q").focus();return;}
