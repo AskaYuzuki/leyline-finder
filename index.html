@@ -5,8 +5,8 @@
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#0e1a2b}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
 <title>LeyLine Finder</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=4">
-<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=4">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=3">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=3">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
@@ -73,6 +73,8 @@ input[type=search]{width:100%}
 .check{display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px}
 .check input{accent-color:var(--star);width:16px;height:16px}
 .srow{display:flex;gap:6px}
+.georow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.georow small{color:var(--muted);font-size:12px}
 .qwrap{flex:1;min-width:0;position:relative}
 .qwrap input{width:100%;padding-right:40px}
 .qwrap input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none;display:none}
@@ -239,13 +241,8 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
           <div class="srow"><div class="qwrap"><input type="search" id="q" enterkeyhint="search" placeholder="神社・古墳・磐座などの名前、住所、座標" autocomplete="off"><button class="qclr" id="qClr" aria-label="入力を消す" hidden><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="#0a1422" stroke-width="2.2" stroke-linecap="round"/></svg></button></div><button class="btn gold" id="qGo" aria-label="検索">🔎</button></div>
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
-          <button class="btn small" id="gmapBtn" style="align-self:flex-start">Googleマップで探す</button>
-          <div class="gguide" id="gback" hidden>
-            <p><b>Googleマップでコピーしてきましたか？</b></p>
-            <div class="row"><button class="btn gold small" id="gpaste">コピーした場所を貼り付ける</button><button class="btn small" id="gbackClose">閉じる</button></div>
-            <p class="note" style="margin:0">うまくいかないときは、上の検索欄を長押しして「ペースト」を押してください。</p>
-          </div>
-          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>ここで見つからない場所は「Googleマップで探す」から。押すと、Googleマップから持ってくる手順が出ます。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
+          <div class="georow"><small>見つからないときは</small><button class="btn small" id="geoBtn">geocodingで探す</button></div>
+          <p class="help">①名前で探す ②地図で位置を合わせる ③「この場所でOK」で固定、の順にピンを立てます。固定したピンは動きません(直したいときは「位置を直す」)。<br>OpenStreetMap(世界中の人が書き込む地図)・Wikipedia・Wikidataの場所データから探すので、神社やお寺のほか、古墳・史跡・磐座・御神木なども、登録があれば出てきます。「夫婦岩 三重」のように区切って探せます。<br>見つからないときは「geocodingで探す」を押すと、geocoding.jp(Googleマップの検索結果)で場所を探します。GoogleマップのURLを検索欄に貼り付けても、その場所が開きます。地図をタップしても同じ手順で立てられます。2〜10個まで。</p>
         </div>
         <div class="group">
           <div class="row" style="justify-content:space-between">
@@ -873,6 +870,10 @@ let searchSeq=0,lastResults=[];
 async function doSearch(q){
   const my=++searchSeq;q=q.trim();const note=$("searchNote");note.hidden=true;
   if(!q){$("results").innerHTML="";return;}
+  const gurl=(q.match(/https:\/\/(?:maps\.app\.goo\.gl|goo\.gl|g\.co|(?:www\.)?google\.(?:com|co\.jp)\/maps)[^\s]*/)||[])[0];
+  if(gurl&&!parseCoord(q)){$("results").innerHTML=`<div class="note" style="padding:8px 10px">GoogleマップのURLから場所を調べています…</div>`;
+    const g=await expandGoogle(gurl);if(my!==searchSeq)return;
+    if(g){searchSeq++;$("results").innerHTML="";$("q").value="";syncClr();startPlace({lat:g.lat,lon:g.lng,name:(g.name||"").normalize("NFKC"),zoom:18});return;}}
   const sh=parseShared(q);
   if(sh&&sh.addr){$("results").innerHTML=`<div class="note" style="padding:8px 10px">住所から場所を探しています…</div>`;
     const g=await gsiAddr(sh.addr);if(my!==searchSeq)return;
@@ -991,31 +992,22 @@ $("pinlist").addEventListener("click",e=>{const b=e.target.closest("[data-mv]");
     if(d.moved){d.li.dataset.justDragged="1";applyOrder([...list.querySelectorAll(".wp:not(.add)")].map(x=>+x.dataset.pin));renderPinList();}
     else renderPinList();};
   list.addEventListener("pointerup",end);list.addEventListener("pointercancel",end);})();
-/* ---- Googleマップから場所を持ってくる案内 ---- */
-let gWent=false;
-$("gmapBtn").onclick=()=>{const q=$("q").value.trim();
-  const url="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q||"");
-  const m=$("modal");
-  m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="Googleマップから場所を持ってくる" style="max-width:440px">
-    <h3>Googleマップから場所を持ってくる</h3>
-    <ol class="gsteps">
-      <li>下の<b>「Googleマップを開く」</b>を押す${q?`(「${esc(q)}」で検索した状態で開きます)`:""}</li>
-      <li>Googleマップで目的の場所を選び、場所の説明が出る画面にする</li>
-      <li><b>「共有」</b>(四角から上向きの矢印のマーク)を押し、<b>「コピー」</b>を押す</li>
-      <li>このアプリに戻って、<b>「コピーした場所を貼り付ける」</b>を押す</li>
-      <li>位置を合わせる画面が開くので、十字を合わせて「この場所でOK」</li>
-    </ol>
-    <p class="help">コピーした文章から名前と住所を読み取ります。共有のメニューに「コピー」がなく「リンクをコピー」しかないときは、代わりに地図の目的の場所を長押しして、上に出る数字(例 34.5083, 136.7885)をコピーしてください。</p>
-    <div class="row"><a class="btn gold" id="gOpen" href="${url}" target="_blank" rel="noopener" style="text-decoration:none">Googleマップを開く</a><button class="btn" id="gCancel">やめる</button></div></div>`;
-  m.hidden=false;
-  $("gCancel").onclick=()=>{m.hidden=true;m.innerHTML="";};
-  $("gOpen").onclick=()=>{gWent=true;$("gback").hidden=false;setTimeout(()=>{m.hidden=true;m.innerHTML="";},300);};};
-$("gbackClose").onclick=()=>{$("gback").hidden=true;gWent=false;};
-$("gpaste").onclick=async()=>{let t="";
-  try{t=await navigator.clipboard.readText();}catch(e){}
-  if(!t||!t.trim()){toast("貼り付けられませんでした。上の検索欄を長押しして「ペースト」を押してください。");$("q").focus();return;}
-  $("gback").hidden=true;gWent=false;$("q").value=t.replace(/\s*\n\s*/g," ");syncClr();clearTimeout(qT);doSearch(t);};
-document.addEventListener("visibilitychange",()=>{if(!document.hidden&&gWent){showTab("pins");$("panel").classList.remove("min");syncChev();$("gback").hidden=false;}});
+/* ---- 中継役(Cloudflare)：geocoding.jp と GoogleマップのURL ---- */
+const RELAY="";  // 例 https://leyline-relay.xxxx.workers.dev
+let geoLast=0;
+$("geoBtn").onclick=async()=>{const q=$("q").value.trim().normalize("NFKC");
+  if(!q){toast("探したい場所の名前を入れてから押してください");$("q").focus();return;}
+  if(!RELAY){toast("geocodingで探す機能は、いま準備中です");return;}
+  const wait=10000-(Date.now()-geoLast);if(wait>0){toast(`geocodingは10秒に1回までです。あと${Math.ceil(wait/1000)}秒お待ちください`);return;}
+  geoLast=Date.now();const b=$("geoBtn");b.disabled=true;b.textContent="さがしています…";
+  try{const r=await fetch(`${RELAY}/geo?q=${encodeURIComponent(q)}`);const j=await r.json();
+    if(j.ok){searchSeq++;$("results").innerHTML="";$("searchNote").hidden=true;
+      const where=(j.place||"").replace(/〒?\d{3}-?\d{4}/,"").trim();
+      startPlace({lat:j.lat,lon:j.lng,name:q,where:where.split(" ")[0]||"",zoom:18});toast("geocodingで見つかった場所です。十字を正確な位置に合わせてください");}
+    else{$("searchNote").hidden=false;$("searchNote").textContent="geocodingでも見つかりませんでした。言葉を変えて試してください。";}}
+  catch(e){toast("geocodingにつながりませんでした。少し待ってからもう一度押してください");}
+  finally{b.textContent="geocodingで探す";setTimeout(()=>b.disabled=false,1500);}};
+async function expandGoogle(u){if(!RELAY)return null;try{const r=await fetch(`${RELAY}/expand?u=${encodeURIComponent(u)}`);const j=await r.json();return j.ok?j:null;}catch(e){return null;}}
 $("restorePrev").onclick=()=>{const p=S.prev;if(!p)return;S.pins=p.pins;S.lines=p.lines||[];S.sun.base=p.base;
   S.seq.pin=Math.max(S.seq.pin,...S.pins.map(x=>x.id+1));S.seq.line=Math.max(S.seq.line,...S.lines.map(x=>x.id+1),1);save();renderAll();fitAll();};
 /* ---- 位置合わせ：検索→位置を合わせる→確認→固定→次へ ---- */
