@@ -150,7 +150,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
 
 /* ---------- on-map ---------- */
 .maplibregl-popup{z-index:6}
-.xbtn{position:absolute;top:6px;right:6px;width:36px;height:36px;border:0;border-radius:50%;background:var(--night-3);color:var(--text);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.xbtn{position:absolute;top:8px;right:8px;width:36px;height:36px;padding:0;margin:0;box-sizing:border-box;border:0;border-radius:50%;-webkit-appearance:none;appearance:none;background:var(--night-3);color:var(--text);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
 .xbtn:hover{background:var(--star-deep);color:#1b2433}
 .placebar .step{padding-right:44px;min-height:30px;display:flex;align-items:center}
 .mapbar{position:absolute;top:4px;left:max(4px,env(safe-area-inset-left,0px));z-index:3;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 70px)}
@@ -327,7 +327,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
         <div class="group">
           <h2>地図に表示する目印</h2>
           <div id="poiChecks" class="group" style="gap:6px"></div>
-          <p class="help">OpenStreetMap(世界中の人が書き込む地図)に登録されている場所を、色の丸で表示します。地図をある程度拡大すると出てきます。どの地図(国土地理院・航空写真も)でも表示され、JPG保存にも入ります。古墳・遺跡・磐座は名前で見分けているので、登録のない場所は出ず、関係ない場所がまじることもあります。</p>
+          <p class="help">OpenStreetMap(世界中の人が書き込む地図)に登録されている場所を、色の丸で表示します。町の中の細い道が見えるくらい(右下の縮尺の目盛りが300〜500m前後)まで拡大すると出てきます。どの地図(国土地理院・航空写真も)でも表示され、JPG保存にも入ります。古墳・遺跡は名前で見分けているので、登録のない場所は出ず、関係ない場所がまじることもあります。</p>
         </div>
         <div class="group">
           <h2>共有する</h2>
@@ -370,7 +370,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
     </div>
     <div class="cross" id="cross" hidden aria-hidden="true"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="13" fill="none" stroke="#fff" stroke-width="5"/><circle cx="32" cy="32" r="13" fill="none" stroke="#d62839" stroke-width="2.5"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M32 2v20M32 42v20M2 32h20M42 32h20" stroke="#d62839" stroke-width="2" stroke-linecap="round"/><circle cx="32" cy="32" r="2.5" fill="#d62839"/></svg></div>
     <div class="buildbar placebar" id="placebar" hidden>
-      <button class="xbtn" id="placeCancel" aria-label="この場所を選ぶのをやめる" title="やめる">×</button>
+      <button class="xbtn" id="placeCancel" aria-label="この場所を選ぶのをやめる" title="やめる"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       <p class="step" id="placeStep">位置を合わせる</p>
       <input type="text" id="placeName" aria-label="場所の名前" placeholder="場所の名前">
       <p class="help" style="margin:0">地図を動かして、十字をぴったりの場所に合わせてください。</p>
@@ -502,9 +502,9 @@ function addOverlay(m){
   const cas={"line-color":"#ffffff","line-opacity":.85,"line-width":wExpr(m,2)};
   if(!m.getSource("ofm")) m.addSource("ofm",{type:"vector",url:"https://tiles.openfreemap.org/planet",attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © OpenStreetMap'});
   POI_CATS.forEach(c=>{const vis=(S.poi&&S.poi[c.k]===false)?"none":"visible";
-    if(!m.getLayer("poi-"+c.k)) m.addLayer({id:"poi-"+c.k,type:"circle",source:"ofm","source-layer":"poi",minzoom:11,filter:c.f,layout:{visibility:vis},
+    if(!m.getLayer("poi-"+c.k)) m.addLayer({id:"poi-"+c.k,type:"circle",source:"ofm","source-layer":"poi",minzoom:11.5,filter:c.f,layout:{visibility:vis},
       paint:{"circle-color":c.c,"circle-radius":["interpolate",["linear"],["zoom"],11,3.5,16,7],"circle-stroke-color":"#fff","circle-stroke-width":1.5}});
-    if(!m.getLayer("poi-"+c.k+"-l")) m.addLayer({id:"poi-"+c.k+"-l",type:"symbol",source:"ofm","source-layer":"poi",minzoom:13,filter:c.f,
+    if(!m.getLayer("poi-"+c.k+"-l")) m.addLayer({id:"poi-"+c.k+"-l",type:"symbol",source:"ofm","source-layer":"poi",minzoom:13.5,filter:c.f,
       layout:{visibility:vis,"text-field":["coalesce",["get","name:ja"],["get","name"]],"text-font":["Noto Sans Regular"],"text-size":11.5,"text-offset":[0,.9],"text-anchor":"top","text-max-width":8,"text-optional":true},
       paint:{"text-color":c.c,"text-halo-color":"#fff","text-halo-width":1.6}});});
   if(!m.getLayer("sun-case")) m.addLayer({id:"sun-case",type:"line",source:"sun",layout:{"line-cap":"round","line-join":"round"},paint:cas});
@@ -521,8 +521,7 @@ const NOTINFO=["!",["in",["get","class"],["literal",["information","parking","bu
 const POI_CATS=[
   {k:"shrine",t:"神社",c:"#c8322f",f:["all",["==",["get","class"],"place_of_worship"],["==",["get","subclass"],"shinto"]]},
   {k:"kofun",t:"古墳",c:"#8a5a2b",f:["all",NOTINFO,["!=",["get","class"],"place_of_worship"],KOFUN]},
-  {k:"iseki",t:"遺跡・史跡",c:"#6b4fa0",f:["all",NOTINFO,["!=",["get","class"],"place_of_worship"],["!",KOFUN],["any",has("遺跡"),has("史跡"),has("跡")],["!",has("駐車")],["!",has("バス")]]},
-  {k:"iwakura",t:"磐座・岩",c:"#2f7a5a",f:["all",NOTINFO,["!",KOFUN],["any",has("磐座"),has("岩座"),has("石"),has("岩")],["!",has("神社")],["!",has("寺")],["!",has("駐車")],["!",has("石油")],["!",has("バス")],["!",has("店")]]}];
+  {k:"iseki",t:"遺跡・史跡",c:"#6b4fa0",f:["all",NOTINFO,["!=",["get","class"],"place_of_worship"],["!",KOFUN],["any",has("遺跡"),has("史跡"),has("跡")],["!",has("駐車")],["!",has("バス")]]}];
 /* 線の幅：実際の地面で5m。5mが2ピクセルより細くなる縮尺では2ピクセル */
 function wExpr(m,add){const mpp0=40075016.686*Math.cos(rad(m.getCenter().lat))/512;
   const px=z=>LINE_M*Math.pow(2,z)/mpp0, zA=Math.log2(MIN_PX*mpp0/LINE_M);
