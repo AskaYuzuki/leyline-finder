@@ -73,8 +73,12 @@ input[type=search]{width:100%}
 .check{display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px}
 .check input{accent-color:var(--star);width:16px;height:16px}
 .srow{display:flex;gap:6px}
-.srow input{flex:1;min-width:0}
-.srow .btn{padding:6px 14px;font-size:18px}
+.qwrap{flex:1;min-width:0;position:relative}
+.qwrap input{width:100%;padding-right:40px}
+.qwrap input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none;display:none}
+.qclr{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.qclr:hover{color:var(--text)}
+.srow .btn{padding:4px 10px;font-size:15px}
 .results{display:flex;flex-direction:column;border:1px solid var(--night-3);border-radius:8px;overflow:auto;max-height:320px}
 .results:empty{display:none}
 .results button{all:unset;cursor:pointer;padding:8px 10px;border-top:1px solid var(--night-3);display:flex;justify-content:space-between;gap:10px;font-size:13px}
@@ -231,7 +235,7 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
       <section class="tab" id="tab-pins">
         <div class="group">
           <h2>場所をさがす</h2>
-          <div class="srow"><input type="search" id="q" enterkeyhint="search" placeholder="神社・古墳・磐座などの名前、住所、座標" autocomplete="off"><button class="btn gold" id="qGo" aria-label="検索">🔎</button></div>
+          <div class="srow"><div class="qwrap"><input type="search" id="q" enterkeyhint="search" placeholder="神社・古墳・磐座などの名前、住所、座標" autocomplete="off"><button class="qclr" id="qClr" aria-label="入力を消す" hidden><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="#0a1422" stroke-width="2.2" stroke-linecap="round"/></svg></button></div><button class="btn gold" id="qGo" aria-label="検索">🔎</button></div>
           <div class="results" id="results"></div>
           <p class="note" id="searchNote" hidden></p>
           <button class="btn small" id="gmapBtn" style="align-self:flex-start">Googleマップで探す</button>
@@ -809,7 +813,7 @@ async function doSearch(q){
   const sh=parseShared(q);
   if(sh&&sh.addr){$("results").innerHTML=`<div class="note" style="padding:8px 10px">住所から場所を探しています…</div>`;
     const g=await gsiAddr(sh.addr);if(my!==searchSeq)return;
-    if(g&&g.length){searchSeq++;$("results").innerHTML="";$("q").value="";
+    if(g&&g.length){searchSeq++;$("results").innerHTML="";$("q").value="";syncClr();
       startPlace({lat:g[0].lat,lon:g[0].lon,name:sh.name||g[0].name,zoom:18});toast("住所の位置に移動しました。十字を正確な場所に合わせてください");return;}
     if(sh.name){q=sh.name;}}
   else if(sh&&sh.name&&!parseCoord(q)){q=sh.name;}
@@ -853,10 +857,12 @@ async function doSearch(q){
   if(!out.length){note.hidden=false;note.textContent=failed?"この画面ではネット検索が使えません。iPhoneのアプリ(askayuzuki.github.io/leyline-finder)から探すか、下の「Googleマップで探す」を使ってください。":"見つかりませんでした。言葉を短くするか、下の「Googleマップで探す」を使ってください。";}
 }
 function showResults(arr){arr.forEach(r=>{r.name=(r.name||"").normalize("NFKC");r.sub=(r.sub||"").normalize("NFKC");});lastResults=arr;$("results").innerHTML=arr.map((r,i)=>`<button data-res="${i}"><span>${esc(r.name)}</span><small>${esc(r.sub||"")}</small></button>`).join("");}
-let qT;$("q").addEventListener("input",e=>{clearTimeout(qT);if(!e.target.value.trim()){$("results").innerHTML="";$("searchNote").hidden=true;}});
+function syncClr(){$("qClr").hidden=!$("q").value;}
+$("qClr").onclick=()=>{$("q").value="";syncClr();searchSeq++;$("results").innerHTML="";$("searchNote").hidden=true;$("q").focus();};
+let qT;$("q").addEventListener("input",e=>{syncClr();clearTimeout(qT);if(!e.target.value.trim()){$("results").innerHTML="";$("searchNote").hidden=true;}});
 $("qGo").onclick=()=>{clearTimeout(qT);$("q").blur();doSearch($("q").value);};
 $("q").addEventListener("paste",e=>{const t=(e.clipboardData||window.clipboardData)?.getData("text");if(!t)return;
-  if(/\n/.test(t)||/(google|goo\.gl)/i.test(t)){e.preventDefault();$("q").value=t.replace(/\s*\n\s*/g," ");clearTimeout(qT);doSearch(t);}});
+  if(/\n/.test(t)||/(google|goo\.gl)/i.test(t)){e.preventDefault();$("q").value=t.replace(/\s*\n\s*/g," ");syncClr();clearTimeout(qT);doSearch(t);}});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doSearch(e.target.value);}});
 $("results").addEventListener("click",e=>{const b=e.target.closest("[data-res]");if(!b)return;const r=lastResults[+b.dataset.res];
   searchSeq++;clearTimeout(qT);$("results").innerHTML="";
@@ -945,7 +951,7 @@ $("gbackClose").onclick=()=>{$("gback").hidden=true;gWent=false;};
 $("gpaste").onclick=async()=>{let t="";
   try{t=await navigator.clipboard.readText();}catch(e){}
   if(!t||!t.trim()){toast("貼り付けられませんでした。上の検索欄を長押しして「ペースト」を押してください。");$("q").focus();return;}
-  $("gback").hidden=true;gWent=false;$("q").value=t.replace(/\s*\n\s*/g," ");clearTimeout(qT);doSearch(t);};
+  $("gback").hidden=true;gWent=false;$("q").value=t.replace(/\s*\n\s*/g," ");syncClr();clearTimeout(qT);doSearch(t);};
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&gWent){showTab("pins");$("panel").classList.remove("min");syncChev();$("gback").hidden=false;}});
 $("restorePrev").onclick=()=>{const p=S.prev;if(!p)return;S.pins=p.pins;S.lines=p.lines||[];S.sun.base=p.base;
   S.seq.pin=Math.max(S.seq.pin,...S.pins.map(x=>x.id+1));S.seq.line=Math.max(S.seq.line,...S.lines.map(x=>x.id+1),1);save();renderAll();fitAll();};
@@ -976,7 +982,7 @@ $("placeOk").onclick=()=>{const c=map.getCenter(),nm=$("placeName").value.trim()
   const wantBase=$("placeBase").getAttribute("aria-pressed")==="true";
   if(place.editId){const p=pinById(place.editId);p.lat=c.lat;p.lon=c.lng;if(nm)p.name=nm;if(wantBase){S.sun.base=p.id;S.sun.on=true;}clearExample();save();renderAll();toast(`${pinNo(p.id)}番のピンを新しい位置で固定しました${wantBase?"(太陽の道の基点)":""}`);}
   else{const p=addPin({lat:c.lat,lon:c.lng,name:nm||null,where:place.where||""});if(p){if(wantBase){S.sun.base=p.id;S.sun.on=true;save();renderAll();}toast(`${S.pins.length}番目のピン「${p.name}」を固定しました${wantBase?"(太陽の道の基点)":""}。次の場所を探せます。`);}}
-  endPlace();showTab("pins");$("q").value="";searchSeq++;$("results").innerHTML="";
+  endPlace();showTab("pins");$("q").value="";syncClr();searchSeq++;$("results").innerHTML="";
   if(S.pins.length>=2)setTimeout(()=>fitAll(),300);
   if(S.pins.length<MAXP)setTimeout(()=>{try{$("q").focus({preventScroll:true});}catch(e){}},350);};
 function setBaseBtn(on){const b=$("placeBase");b.setAttribute("aria-pressed",String(on));b.innerHTML=on?"✓ 太陽の道の<br>基点にする":"☀ 太陽の道の<br>基点にする";}
