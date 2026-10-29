@@ -12,6 +12,7 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:locale" content="ja_JP">
+<meta name="note:card" content="summary_large_image">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="manifest.webmanifest">
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#0e1a2b}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
@@ -256,6 +257,11 @@ html.view .viewbar{display:flex;position:absolute;left:8px;right:8px;bottom:calc
 .viewbar a.gold{background:var(--star);color:#1a1405;border-color:var(--star-deep)}
 html.view .maplibregl-ctrl-bottom-right{margin-bottom:76px}
 @media (max-width:520px){html.view .maplibregl-ctrl-bottom-right{margin-bottom:108px}}
+.pvwrap{position:fixed;inset:0;z-index:2000;background:var(--night);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.pvbar{display:flex;align-items:center;gap:10px;padding:8px max(10px,env(safe-area-inset-left,0px));color:var(--text);font-size:13px}
+.pvwrap iframe{flex:1;width:100%;border:0;background:#fff}
+.mmitem{flex-direction:column;align-items:stretch!important;gap:6px}
+.mmitem .row{flex-wrap:wrap!important;gap:6px}
 .copybox{display:flex;flex-direction:column;gap:6px;border:1px solid var(--night-3);border-radius:10px;padding:10px;background:var(--night-2)}
 .copybox textarea{width:100%;height:76px;font-size:12px!important;background:#0a1422;color:var(--text);border:1px solid var(--night-3);border-radius:8px;padding:6px;resize:none}
 </style>
@@ -351,9 +357,10 @@ html.view .maplibregl-ctrl-bottom-right{margin-bottom:76px}
       <section class="tab" id="tab-map" hidden>
         <div class="group">
           <h2>My Map</h2>
-          <p class="help">いまのピン・ライン・太陽の道を、名前を付けて保存しておけます。あとで一覧から開けます。50個まで保存でき、このiPhoneの中に保存されます。</p>
+          <p class="help">いまのピン・ライン・太陽の道を、名前を付けて保存しておけます。あとで一覧から開いたり、「Noteで使う」「Blogで使う」で記事に載せたりできます。50個まで保存でき、このiPhoneの中に保存されます。</p>
           <div class="srow"><div class="qwrap"><input type="text" id="mapName" placeholder="例 御来光の道" maxlength="40"></div><button class="btn gold" id="saveMap" style="font-size:13px">保存</button></div>
           <div id="myMaps" class="found"></div>
+          <div class="row"><button class="btn small" id="howNote">Noteへの載せ方</button><button class="btn small" id="howBlog">Blogへの載せ方</button></div>
         </div>
         <div class="group">
           <h2>地図の種類</h2>
@@ -630,7 +637,8 @@ function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&
     if(s.pins.length) s.prev={pins:s.pins,lines:s.lines,base:s.sun.base};
     s.pins=[];s.lines=[];s.sun.base=null;
     return s;}}catch(e){}const e=exampleState();e.v2=1;return e;}
-function save(){if(VIEW)return;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+let swapping=false;
+function save(){if(VIEW||swapping)return;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 // 見るだけの画面：?view が付いたリンクで開いたとき(note・ブログ・埋め込み)
 const VIEW=new URLSearchParams(location.search).has("view");
 const EMBED=VIEW&&(()=>{try{return window.top!==window.self;}catch(e){return true;}})();
@@ -1241,14 +1249,16 @@ $("newLine").onclick=startBuild;
 /* ---- My Map：名前を付けて保存・一覧から開く ---- */
 function snapshot(){return JSON.parse(JSON.stringify({pins:S.pins,lines:S.lines,sun:S.sun,nsew:S.nsew,base:S.base}));}
 function renderMyMaps(){const L=S.saved||[];
-  $("myMaps").innerHTML=L.length?L.map((m,i)=>`<div class="item"><span><b>${esc(m.name)}</b><br><small class="note">${m.pins.length}か所・${esc(m.date)}</small></span><span class="row" style="flex-wrap:nowrap"><button class="btn small gold" data-mo="${i}">開く</button><button class="btn small danger" data-md="${i}">削除</button></span></div>`).join(""):`<p class="help">まだ保存した地図はありません。</p>`;}
+  $("myMaps").innerHTML=L.length?L.map((m,i)=>`<div class="item mmitem"><span><b>${esc(m.name)}</b><br><small class="note">${m.pins.length}か所・${esc(m.date)}</small></span><span class="row"><button class="btn small gold" data-mo="${i}">開く</button><button class="btn small" data-mn="${i}">Noteで使う</button><button class="btn small" data-mb="${i}">Blogで使う</button><button class="btn small danger" data-md="${i}" style="margin-left:auto">削除</button></span></div>`).join(""):`<p class="help">まだ保存した地図はありません。</p>`;}
 $("saveMap").onclick=()=>{if(!S.pins.length){toast("ピンを立ててから保存してください");return;}
   const nm=($("mapName").value.trim()||S.pins.map(p=>p.name).slice(0,2).join("・")).normalize("NFKC");
   const d=new Date(),date=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
   S.saved=S.saved||[];const k=S.saved.findIndex(m=>m.name===nm);const item={name:nm,date,...snapshot()};
   if(k>=0)S.saved[k]=item;else S.saved.unshift(item);if(S.saved.length>50)S.saved.length=50;
   save();renderMyMaps();$("mapName").value="";toast(k>=0?`「${nm}」を上書き保存しました`:`「${nm}」を保存しました`);};
-$("myMaps").addEventListener("click",e=>{const o=e.target.closest("[data-mo]"),d=e.target.closest("[data-md]");
+$("myMaps").addEventListener("click",e=>{const o=e.target.closest("[data-mo]"),d=e.target.closest("[data-md]"),mn=e.target.closest("[data-mn]"),mb=e.target.closest("[data-mb]");
+  if(mn){const m=S.saved[+mn.dataset.mn];useForNote(m,m.name);return;}
+  if(mb){const m=S.saved[+mb.dataset.mb];useForBlog(m,m.name);return;}
   if(o){const m=S.saved[+o.dataset.mo];const before=JSON.stringify(snapshot());
     S.pins=JSON.parse(JSON.stringify(m.pins));S.lines=JSON.parse(JSON.stringify(m.lines));S.sun=JSON.parse(JSON.stringify(m.sun));S.nsew=m.nsew;
     S.seq.pin=Math.max(1,...S.pins.map(p=>p.id+1));S.seq.line=Math.max(1,...S.lines.map(l=>l.id+1));
@@ -1488,11 +1498,11 @@ async function deflate(str){const cs=new CompressionStream("deflate-raw");const 
 async function inflate(bytes){const ds=new DecompressionStream("deflate-raw");const w=ds.writable.getWriter();w.write(bytes);w.close();return new TextDecoder().decode(await new Response(ds.readable).arrayBuffer());}
 const bytesToB64=by=>{let bin="";by.forEach(c=>bin+=String.fromCharCode(c));return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");};
 const b64ToBytes=str=>{str=str.replace(/-/g,"+").replace(/_/g,"/");return Uint8Array.from(atob(str),c=>c.charCodeAt(0));};
-async function packShort(title){const idx=new Map(S.pins.map((p,i)=>[p.id,i]));
-  const o=[2,S.pins.map(p=>[p.name,Math.round(p.lat*1e5),Math.round(p.lon*1e5)]),
-    S.lines.map(L=>{const ci=LINE_COLORS.indexOf(L.color);return [L.pins.map(id=>idx.get(id)),L.mode==="path"?1:0,ci>=0?ci:L.color,L.ext||0,L.on?1:0];}),
-    [S.sun.on?1:0,S.sun.base==="all"?-2:(idx.has(S.sun.base)?idx.get(S.sun.base):-1),parseInt(SUN.map(([k])=>S.sun.show[k]?1:0).join(""),2),S.nsew?1:0],
-    ["osm","positron","std","photo"].indexOf(S.base)];
+async function packShort(title,st=S){const idx=new Map(st.pins.map((p,i)=>[p.id,i]));
+  const o=[2,st.pins.map(p=>[p.name,Math.round(p.lat*1e5),Math.round(p.lon*1e5)]),
+    st.lines.map(L=>{const ci=LINE_COLORS.indexOf(L.color);return [L.pins.map(id=>idx.get(id)),L.mode==="path"?1:0,ci>=0?ci:L.color,L.ext||0,L.on?1:0];}),
+    [st.sun.on?1:0,st.sun.base==="all"?-2:(idx.has(st.sun.base)?idx.get(st.sun.base):-1),parseInt(SUN.map(([k])=>st.sun.show[k]?1:0).join(""),2),st.nsew?1:0],
+    ["osm","positron","std","photo"].indexOf(st.base)];
   if(title)o.push(String(title).slice(0,60));
   const js=JSON.stringify(o);
   if(window.CompressionStream){try{return "z="+bytesToB64(await deflate(js));}catch(e){}}
@@ -1516,6 +1526,7 @@ async function shareLink(){
 $("shareLink").onclick=shareLink;
 $("shareImg").onclick=()=>exportJPG(2,null,true);
 $("shareEmbed").onclick=()=>showEmbed();
+$("howNote").onclick=()=>showSteps("Noteへの載せ方",HOW_NOTE);$("howBlog").onclick=()=>showSteps("Blogへの載せ方",HOW_BLOG);
 $("shareBtn").onclick=()=>{const m=$("modal");
   m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="共有" style="max-width:420px"><h3>共有する</h3>
     <button class="btn gold" id="sh1" style="text-align:left;padding:12px"><b>地図のリンクを送る</b><br><span style="font-weight:400;font-size:12px">受け取った人がそのまま同じ地図を開けます</span></button>
@@ -1524,29 +1535,106 @@ $("shareBtn").onclick=()=>{const m=$("modal");
     <button class="btn small" id="sh0" style="align-self:flex-start">閉じる</button></div>`;
   m.hidden=false;const close=()=>{m.hidden=true;m.innerHTML="";};
   $("sh0").onclick=close;$("sh1").onclick=()=>{close();shareLink();};$("sh2").onclick=()=>{close();showTab("map");exportJPG(2,null,true);};$("sh3").onclick=()=>{close();showEmbed();};};
-/* 記事に載せる：見るだけの地図のURL(note用)と、埋め込みのコード(ブログ用) */
+/* 記事に載せる：Noteは地図の画像のカードになるURL、Blogは記事の中で動かせる地図のコード */
 async function copyText(t,okMsg,ta){try{await navigator.clipboard.writeText(t);toast(okMsg);}catch(e){if(ta){ta.focus();ta.select();}toast("文字を長押ししてコピーしてください");}}
+// 押した操作のうちにコピーを始めて、URLができたら書き込む(iPhoneは時間がたつとコピーできないため)
+async function copyLater(p){
+  try{if(window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write){
+    await navigator.clipboard.write([new ClipboardItem({"text/plain":p.then(t=>new Blob([t],{type:"text/plain"}))})]);return true;}}catch(e){}
+  try{const t=await p;await navigator.clipboard.writeText(t);return true;}catch(e){return false;}}
+// 保存した地図などを、いまの画面を変えずに一時的に使う(画像づくりのあいだ)
+async function withState(st,fn){const keep={pins:S.pins,lines:S.lines,sun:S.sun,nsew:S.nsew,base:S.base};swapping=true;
+  Object.assign(S,JSON.parse(JSON.stringify({pins:st.pins,lines:st.lines,sun:st.sun,nsew:st.nsew,base:st.base||S.base})));
+  try{return await fn();}finally{Object.assign(S,keep);swapping=false;}}
+const blobToB64=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(b);});
+/* Noteのカード用の画像(1200×630)：地図と、下にタイトルの帯 */
+async function makeCardImage(title){
+  const W=1200,H=630,BAND=116;await document.fonts.ready;
+  const host=document.createElement("div");host.style.cssText=`position:fixed;left:-${W+300}px;top:0;width:${W}px;height:${H}px;pointer-events:none`;document.body.appendChild(host);
+  let off;
+  try{const b=new maplibregl.LngLatBounds();S.pins.forEach(p=>b.extend([p.lon,p.lat]));
+    off=new maplibregl.Map({container:host,style:await styleFor(S.base),bounds:b,fitBoundsOptions:{padding:{top:80,bottom:BAND+70,left:150,right:150},maxZoom:15},
+      interactive:false,attributionControl:false,canvasContextAttributes:{preserveDrawingBuffer:true},fadeDuration:0,pixelRatio:1,localIdeographFontFamily:"'Hiragino Sans','Noto Sans CJK JP',sans-serif"});
+    await new Promise((res,rej)=>{const t=setTimeout(()=>rej(new Error("timeout")),45000);off.on("load",()=>{addOverlay(off);applyWidths(off);const d=overlayData();off.getSource("lines").setData(d.lines);off.getSource("sun").setData(d.sun);
+      off.once("idle",()=>{clearTimeout(t);res();});});off.on("error",()=>{});});
+    const cv=document.createElement("canvas");cv.width=W;cv.height=H;const x=cv.getContext("2d");x.drawImage(off.getCanvas(),0,0,W,H);
+    const F=(w,px)=>`${w} ${px}px "Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",sans-serif`;
+    const halo=(t,X,Y,col,font,lw)=>{x.font=font;x.lineJoin="round";x.strokeStyle="rgba(255,255,255,.95)";x.lineWidth=lw||5;x.strokeText(t,X,Y);x.fillStyle=col;x.fillText(t,X,Y);};
+    labelSpecs(off).forEach(l=>{if(l.kind==="line")return;const p=off.project([l.lon,l.lat]);x.textAlign="center";x.textBaseline="middle";halo(l.text,p.x,p.y,l.c,F(700,15));});
+    S.pins.forEach((p,i)=>{const q=off.project([p.lon,p.lat]),r=17;
+      x.beginPath();x.arc(q.x,q.y,r,0,Math.PI*2);x.fillStyle="#14243b";x.fill();x.lineWidth=3.5;x.strokeStyle="#f0d48c";x.stroke();
+      x.fillStyle="#fff";x.font=F(700,17);x.textAlign="center";x.textBaseline="middle";x.fillText(String(i+1),q.x,q.y+1);
+      x.textAlign="left";halo(fit(x,p.name,360),q.x+r+7,q.y,"#13213a",F(700,20),6);});
+    const Y0=H-BAND;x.fillStyle="#0e1a2b";x.fillRect(0,Y0,W,BAND);x.fillStyle="#c9a24a";x.fillRect(0,Y0,W,3);
+    x.textAlign="left";x.textBaseline="alphabetic";x.fillStyle="#f0d48c";x.font=`700 26px "Cormorant Garamond",serif`;x.fillText("LeyLine Finder",40,Y0+40);
+    x.fillStyle="#edf2f8";x.font=F(700,36);x.fillText(fit(x,title||"LeyLine Finder の地図",W-80-300),40,Y0+90);
+    x.textAlign="right";x.fillStyle="#9db0c6";x.font=F(500,20);x.fillText("押すと地図が開きます ›",W-40,Y0+90);
+    x.font=F(400,13);x.fillText(OFM[S.base]?"地図：OpenFreeMap © OpenStreetMap contributors":"地図：国土地理院",W-40,Y0+40);
+    return await new Promise(r=>cv.toBlob(r,"image/jpeg",.86));
+  }finally{try{off&&off.remove();}catch(e){}host.remove();}}
+async function noteUrlFor(st,title){
+  const h=await packShort(title,st),fallback=APP_URL+"?view#"+h;
+  if(!RELAY||!window.maplibregl)return {url:fallback,card:false};
+  try{const blob=await withState(st,()=>makeCardImage(title));
+    const d=st.pins.slice(0,4).map(p=>p.name).join("・")+(st.pins.length>4?" ほか":"");
+    const r=await fetch(RELAY+"/card",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({h,t:title,d,img:await blobToB64(blob)})});
+    const j=await r.json();if(j.ok&&j.url)return {url:j.url,card:true};}catch(e){}
+  return {url:fallback,card:false};}
+function busy(msg){const m=$("modal");m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" style="max-width:360px"><p style="margin:0">${esc(msg)}</p></div>`;m.hidden=false;}
+function urlSheet(head,text,help){const m=$("modal");
+  m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" style="max-width:440px"><h3>${esc(head)}</h3><p class="help" style="margin:0">${help}</p><textarea id="usText" readonly style="width:100%;height:96px;font-size:12px">${esc(text)}</textarea>
+    <div class="row" style="justify-content:space-between"><button class="btn gold small" id="usCopy">コピー</button><button class="btn small" id="usClose">閉じる</button></div></div>`;
+  m.hidden=false;$("usCopy").onclick=()=>copyText(text,"コピーしました",$("usText"));$("usClose").onclick=()=>{m.hidden=true;m.innerHTML="";};}
+async function useForNote(st,title){
+  if(!st.pins.length){toast("ピンのある地図を選んでください");return;}
+  busy("Note用のカード画像を作っています…(数秒〜十数秒)");
+  const pr=noteUrlFor(st,title),ok=await copyLater(pr.then(r=>r.url)),r=await pr;
+  const m=$("modal");m.hidden=true;m.innerHTML="";
+  const help=r.card?"Noteの本文に貼り付けて改行すると、この地図の画像が大きく出るカードになります。":"いまはカード用の画像を預ける準備ができていないため、カードはアプリ共通の画像になります。";
+  if(ok)toast((r.card?"Note用のURLをコピーしました。":"Note用のURLをコピーしました(カードは共通の画像)。")+"Noteの本文に貼って改行してください。");
+  else urlSheet("Note用のURL",r.url,help);}
+async function useForBlog(st,title){
+  if(!st.pins.length){toast("ピンのある地図を選んでください");return;}
+  const pr=packShort(title,st).then(h=>`<iframe src="${APP_URL}?view#${h}" title="${esc(title||"LeyLine Finder の地図")}" width="100%" height="480" style="border:0;border-radius:8px;max-width:720px" loading="lazy" allow="fullscreen"></iframe>`);
+  if(await copyLater(pr))toast("Blog用のコードをコピーしました。WordPressは「カスタムHTML」、はてなブログは「HTML編集」に貼ってください。");
+  else urlSheet("Blog用のコード",await pr,"記事のHTMLを書ける場所に貼り付けてください。");}
+/* 見え方の確認：アプリの中に重ねて開く(閉じると元の画面に戻る) */
+async function showPreview(st,title){const h=await packShort(title,st);const url=(/askayuzuki\.github\.io|localhost/.test(location.host)?location.origin+location.pathname:APP_URL)+"?view#"+h;
+  const d=document.createElement("div");d.className="pvwrap";
+  d.innerHTML=`<div class="pvbar"><button class="backbtn" id="pvBack"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>戻る</button><span>読む人に見える画面</span></div><iframe title="見え方の確認" src="${esc(url)}"></iframe>`;
+  document.body.appendChild(d);d.querySelector("#pvBack").onclick=()=>d.remove();}
+const HOW_NOTE=[["① 「Noteで使う」を押す","「地図・保存」タブの My Map で、載せたい地図の「Noteで使う」を押します。いまの地図を載せるときは、地図の上の「共有」→「記事に載せる(Note・Blog)」でタイトルを入れて「Noteで使う」を押します。"],
+ ["② URLがコピーされる","数秒〜十数秒で、地図の画像とタイトルが入ったカードの準備ができて、URLがコピーされます。"],
+ ["③ Noteの記事に貼る","Noteの記事の編集画面で、地図を入れたい行にURLを貼り付けて、改行(Enter)を押します。地図の画像とタイトルが大きく出るカードに変わります。"],
+ ["④ 読む人の見え方","読む人がカードを押すと地図が開き、拡大・縮小と移動ができます。ピンや線は動かせません。地図の下の「自分でも作る」から、このアプリを始められます。"]];
+const HOW_BLOG=[["① 「Blogで使う」を押す","「地図・保存」タブの My Map で、載せたい地図の「Blogで使う」を押します。いまの地図を載せるときは、地図の上の「共有」→「記事に載せる(Note・Blog)」でタイトルを入れて「Blogで使う」を押します。埋め込みのコードがコピーされます。"],
+ ["② ブログに貼る","WordPressは、記事に「カスタムHTML」のブロックを足して貼ります。はてなブログは「HTML編集」の画面で、地図を入れたい場所に貼ります。そのほかのブログも、HTMLを書ける場所に貼ります。"],
+ ["③ プレビューで確かめる","記事のプレビューで、地図が出ているか確かめます。記事の中の地図は、スマホでは2本の指、パソコンではCtrlキー(Macは⌘キー)を押しながらスクロールすると動きます。"],
+ ["④ 埋め込めないブログのとき","ブログによっては、埋め込みのコードが使えないことがあります。そのときは「Noteで使う」でコピーしたURLを貼ると、地図の画像のリンクとして載せられます。"]];
+function showSteps(label,G,after){let i=0;const m=$("modal");
+  const draw=()=>{m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(label)}" style="max-width:420px"><p class="note" style="margin:0">${esc(label)}　${i+1} / ${G.length}</p><h3>${G[i][0]}</h3><p class="help" style="font-size:14px;color:var(--text)">${G[i][1]}</p>
+    <div class="row" style="justify-content:flex-end">${i>0?`<button class="btn" id="hsPrev">戻る</button>`:""}<button class="btn gold" id="hsNext">${i<G.length-1?"次へ":"閉じる"}</button></div></div>`;
+    m.hidden=false;$("hsNext").onclick=()=>{if(i<G.length-1){i++;draw();}else close();};if($("hsPrev"))$("hsPrev").onclick=()=>{i--;draw();};};
+  const close=()=>{m.hidden=true;m.innerHTML="";if(after)after();};draw();}
+function curTitle(){return ($("emTitle")&&$("emTitle").value.trim())||"";}
 function showEmbed(){if(!S.pins.length){toast("ピンを立ててから載せてください");return;}
   const m=$("modal");
-  m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="記事に載せる" style="max-width:460px;max-height:90vh;overflow:auto"><h3>記事に載せる</h3>
-    <p class="help" style="margin:0">読む人は、地図の拡大・縮小と移動だけできます。ピンや線は動かせません。地図の下に「アプリで開く」「自分でも作る」のボタンが付きます。</p>
-    <label class="note" for="emTitle">地図のタイトル(地図の下に出ます)</label>
+  m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="記事に載せる" style="max-width:460px;max-height:90vh;overflow:auto"><h3>記事に載せる(Note・Blog)</h3>
+    <p class="help" style="margin:0">いまの地図を載せます。読む人は、地図の拡大・縮小と移動だけできます。保存した地図は「地図・保存」タブの My Map の一覧から、それぞれ載せられます。</p>
+    <label class="note" for="emTitle">地図のタイトル</label>
     <input type="text" id="emTitle" maxlength="60" placeholder="例：出雲大社と伊勢神宮を結ぶ線">
-    <div class="copybox"><b>Noteに貼る</b>
-      <p class="help" style="margin:0">記事の本文にこのURLを貼り付けて、改行(Enter)を押すとカードになります。読む人がカードを押すと地図が開きます。いまの画面を「画像を送る」で保存して、カードの上に載せると伝わりやすくなります。</p>
-      <textarea id="emUrl" readonly></textarea><button class="btn gold small" id="emUrlCopy" style="align-self:flex-start">URLをコピー</button></div>
-    <div class="copybox"><b>Blogに埋め込む</b>
-      <p class="help" style="margin:0">記事の中で、そのまま拡大・縮小できる地図になります。WordPressなら「カスタムHTML」のブロックに、はてなブログなら「HTML編集」に貼り付けてください。</p>
-      <textarea id="emCode" readonly></textarea><button class="btn gold small" id="emCodeCopy" style="align-self:flex-start">コードをコピー</button></div>
-    <div class="row" style="justify-content:space-between"><a class="btn small" id="emPreview" target="_blank" rel="noopener">見え方を確かめる</a><button class="btn small" id="emClose">閉じる</button></div></div>`;
+    <div class="copybox"><button class="btn gold" id="emNote">Noteで使う</button>
+      <p class="help" style="margin:0">URLをコピーします。Noteの本文に貼って改行すると、この地図の画像とタイトルが大きく出るカードになります。読む人がカードを押すと地図が開きます。</p></div>
+    <div class="copybox"><button class="btn gold" id="emBlog">Blogで使う</button>
+      <p class="help" style="margin:0">埋め込みのコードをコピーします。記事の中で、そのまま拡大・縮小できる地図になります。</p></div>
+    <div class="row"><button class="btn small" id="emHowNote">Noteへの載せ方</button><button class="btn small" id="emHowBlog">Blogへの載せ方</button></div>
+    <div class="row" style="justify-content:space-between"><button class="btn small" id="emPreview">見え方を確かめる</button><button class="btn small" id="emClose">閉じる</button></div></div>`;
   m.hidden=false;const close=()=>{m.hidden=true;m.innerHTML="";};$("emClose").onclick=close;
-  let url="";
-  const upd=async()=>{url=APP_URL+"?view#"+await packShort($("emTitle").value.trim());const t=$("emTitle").value.trim()||"LeyLine Finder の地図";
-    $("emUrl").value=url;$("emPreview").href=url;
-    $("emCode").value=`<iframe src="${url}" title="${esc(t)}" width="100%" height="480" style="border:0;border-radius:8px;max-width:720px" loading="lazy" allow="fullscreen"></iframe>`;};
-  let tm;$("emTitle").addEventListener("input",()=>{clearTimeout(tm);tm=setTimeout(upd,250);});upd();
-  $("emUrlCopy").onclick=async()=>{await upd();copyText($("emUrl").value,"URLをコピーしました。noteの本文に貼り付けて、改行を押してください。",$("emUrl"));};
-  $("emCodeCopy").onclick=async()=>{await upd();copyText($("emCode").value,"埋め込みのコードをコピーしました",$("emCode"));};}
+  $("emNote").onclick=()=>{const t=curTitle();useForNote(snapshot(),t);};
+  $("emBlog").onclick=()=>{const t=curTitle();close();useForBlog(snapshot(),t);};
+  $("emPreview").onclick=()=>showPreview(snapshot(),curTitle());
+  const reopen=()=>{const t=curTitle();return ()=>{showEmbed();$("emTitle").value=t;};};
+  $("emHowNote").onclick=()=>showSteps("Noteへの載せ方",HOW_NOTE,reopen());$("emHowBlog").onclick=()=>showSteps("Blogへの載せ方",HOW_BLOG,reopen());}
 async function loadShared(){const h=location.hash;if(!/^#(m|z|j)=/.test(h))return false;
   try{const k=h[1],body=h.slice(3);
     const o=k==="m"?unpackMap(body):unpackShort(k==="z"?await inflate(b64ToBytes(body)):b64d(body));
@@ -1567,7 +1655,7 @@ function setupView(){if(!VIEW)return;
 const GUIDE=[["① 場所を探してピンを立てる","「ピン」タブの検索欄に神社などの名前を入れて🔎。候補は地図にも青い番号で出ます。選ぶと十字の画面になるので、地図を動かして位置を合わせ「この場所でOK」で固定します。地図をタップしても立てられます。"],
  ["② ラインを引く","「ライン」タブの「＋新しいライン」でピンを順にタップ。「一直線に並ぶ組み合わせを探す」で、レイライン上に並ぶ場所を自動で探せます。線は地球の丸みに沿った直線です。"],
  ["③ 太陽の道・東西南北","「太陽の道」タブで、夏至・冬至・春分・秋分の日の出と日の入り、東西南北の線を出せます。基点はピンをタップして選べます。"],
- ["④ 保存・共有","「地図・保存」タブで名前を付けて保存、画像(JPG)の保存ができます。地図の上の「共有」から、リンクや画像を送れます。"]];
+ ["④ 保存・共有","「地図・保存」タブで名前を付けて保存、画像(JPG)の保存ができます。地図の上の「共有」から、リンクや画像を送れます。保存した地図は、My Map の「Noteで使う」「Blogで使う」で記事に載せられます。"]];
 const isStandalone=()=>{try{return navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;}catch(e){return false;}};
 const INSTALL_STEP=["⑤ ホーム画面に追加する","アプリのように使うには、ホーム画面に追加してください。<br><b>iPhone</b>：Safariの下にある共有ボタン(□に↑)を押し、「ホーム画面に追加」を選びます。<br><b>Android</b>：Chromeの右上の︙を押し、「ホーム画面に追加」を選びます。<br>追加すると、ホーム画面の鳥居のアイコンからすぐ開けます。"];
 function showGuide(){let i=0;const G=isStandalone()?GUIDE:[...GUIDE,INSTALL_STEP];const m=$("modal");

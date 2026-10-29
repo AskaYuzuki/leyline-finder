@@ -2,9 +2,15 @@
 // ・/geo?q=名前      … geocoding.jp に名前を問い合わせ、緯度経度を返す(同じ言葉は7日間覚えておき、問い合わせを減らす)
 // ・/expand?u=URL    … Googleマップの共有URL(maps.app.goo.gl など)の行き先を調べ、緯度経度を返す
 // ・/hist?bb=南,西,北,東 … 古墳・遺跡などの史跡を OpenStreetMap(Overpass)と Wikidata から探して返す
+// ・/card(POST)        … Noteに貼るカード用に、地図の画像とタイトルを預かり、短いURL(/n/番号)を返す
+// ・/n/番号             … Noteのカード用のページ。地図の画像・タイトルを見せ、人が開くと見るだけの地図へ移る
+// ・/i/番号.jpg         … カードの画像
+// ※ /card を使うには、Cloudflareで KV(名前空間)を作り、このWorkerに変数名「CARDS」で結び付けておく
 // LeyLine Finder(askayuzuki.github.io)からの問い合わせだけに答える
 
 const ALLOWED_ORIGINS = ["https://askayuzuki.github.io"];
+const APP_URL = "https://askayuzuki.github.io/leyline-finder/";
+const escHtml = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const GOOGLE_HOSTS = ["maps.app.goo.gl", "goo.gl", "g.co", "maps.google.com", "www.google.com", "google.com", "www.google.co.jp", "google.co.jp"];
 
 export default {
@@ -15,7 +21,50 @@ export default {
     const headers = { "Access-Control-Allow-Origin": allowOrigin, "Vary": "Origin", "Content-Type": "application/json; charset=utf-8" };
     const reply = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers });
 
-    if (req.method === "OPTIONS") return new Response(null, { headers: { ...headers, "Access-Control-Allow-Methods": "GET", "Access-Control-Max-Age": "86400" } });
+    // Noteのカード用ページと画像(だれが開いてもよい)
+    let m;
+    if (req.method === "GET" && (m = url.pathname.match(/^\/i\/([A-Za-z0-9_-]{8,20})\.jpg$/))) {
+      if (!env.CARDS) return new Response("not found", { status: 404 });
+      const img = await env.CARDS.get("i:" + m[1], { type: "arrayBuffer" });
+      if (!img) return new Response("not found", { status: 404 });
+      return new Response(img, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" } });
+    }
+    if (req.method === "GET" && (m = url.pathname.match(/^\/n\/([A-Za-z0-9_-]{8,20})$/))) {
+      const rec = env.CARDS ? await env.CARDS.get("c:" + m[1], { type: "json" }) : null;
+      if (!rec) return Response.redirect(APP_URL, 302);
+      const dest = APP_URL + "?view#" + rec.h, title = rec.t || "LeyLine Finder の地図";
+      const desc = (rec.d ? rec.d + "｜" : "") + "押すと地図が開き、拡大・縮小して見られます。LeyLine Finder";
+      const img = url.origin + "/i/" + m[1] + ".jpg";
+      const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escHtml(title)}｜LeyLine Finder</title><meta name="description" content="${escHtml(desc)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="LeyLine Finder"><meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="${escHtml(title)}"><meta property="og:description" content="${escHtml(desc)}">
+<meta property="og:url" content="${escHtml(url.origin + url.pathname)}"><meta property="og:image" content="${escHtml(img)}">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="note:card" content="summary_large_image"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${escHtml(img)}">
+<meta http-equiv="refresh" content="0;url=${escHtml(dest)}"></head>
+<body style="font-family:sans-serif;padding:24px"><script>location.replace(${JSON.stringify(dest)})</script><p><a href="${escHtml(dest)}">地図を開く</a></p></body></html>`;
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" } });
+    }
+
+    if (req.method === "OPTIONS") return new Response(null, { headers: { ...headers, "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400" } });
+    if (req.method === "POST" && url.pathname === "/card") {
+      if (!ALLOWED_ORIGINS.includes(origin)) return reply({ error: "forbidden" }, 403);
+      if (!env.CARDS) return reply({ ok: false, error: "nokv" }, 501);
+      let b; try { b = await req.json(); } catch (e) { return reply({ error: "json" }, 400); }
+      const h = String(b.h || ""), t = String(b.t || "").slice(0, 60), d = String(b.d || "").slice(0, 120);
+      if (!/^[zj]=[A-Za-z0-9_-]{1,8000}$/.test(h)) return reply({ error: "h" }, 400);
+      const b64 = String(b.img || "");
+      if (!b64 || b64.length > 1400000) return reply({ error: "img" }, 400);
+      let bytes; try { bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); } catch (e) { return reply({ error: "img" }, 400); }
+      if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return reply({ error: "img" }, 400);
+      // 同じ地図・同じタイトルなら同じ番号(画像は新しいものに差し替える)
+      const dg = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(h + "|" + t)));
+      const id = btoa(String.fromCharCode(...dg.slice(0, 9))).replace(/\+/g, "-").replace(/\//g, "_");
+      await env.CARDS.put("i:" + id, bytes);
+      await env.CARDS.put("c:" + id, JSON.stringify({ h, t, d, at: Date.now() }));
+      return reply({ ok: true, id, url: url.origin + "/n/" + id });
+    }
     if (req.method !== "GET") return reply({ error: "method" }, 405);
     if (origin && !ALLOWED_ORIGINS.includes(origin)) return reply({ error: "forbidden" }, 403);
 
