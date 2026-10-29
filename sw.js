@@ -1,4 +1,4 @@
-const CACHE="leyline-v56";
+const CACHE="leyline-v57";
 const SHELL=["./","index.html","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()));});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE&&k!=="leyline-poi-v1").map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});

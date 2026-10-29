@@ -626,6 +626,22 @@ async function overpassCells(cells){
         per.get(key).push({type:"Feature",properties:{k,n:(e.tags["name:ja"]||e.tags.name)},geometry:{type:"Point",coordinates:[+lo.toFixed(6),+la.toFixed(6)]}});});
       for(const[key,fs]of per){out.set(key,fs);const[a,b]=key.split(",");poiStorePut("op/"+a+"/"+b,fs);}}}
   return [...out.values()].flat();}
+/* 神社の足りない分を Wikidata から足す(約5km四方ごとに保存して、2回目からはすぐ出す) */
+const SHRINE_RE=/神社|神宮|大社|稲荷|八幡宮|天満宮|権現|明神|坐|社$|宮$/;
+const NOT_SHRINE_RE=/駅|バス|停留所|前$|公園|駐車|学校|町|村|市|郡|跡|古墳|寺|院|保育|病院|郵便|交番|通り|道$|橋$|山$|川$|池$/;
+async function wdShrineCells(cells){
+  const out=new Map(),miss=[];
+  for(const c of cells){const st=await poiStoreGet("wds/"+c[0]+"/"+c[1]);if(st)out.set(c.join(),st);else miss.push(c);}
+  if(miss.length){const S_=Math.min(...miss.map(c=>c[0]))*CELL,W_=Math.min(...miss.map(c=>c[1]))*CELL,N_=(Math.max(...miss.map(c=>c[0]))+1)*CELL,E_=(Math.max(...miss.map(c=>c[1]))+1)*CELL;
+    const q=`SELECT ?label ?loc WHERE { SERVICE wikibase:box { ?item wdt:P625 ?loc . bd:serviceParam wikibase:cornerSouthWest "Point(${W_.toFixed(3)} ${S_.toFixed(3)})"^^geo:wktLiteral . bd:serviceParam wikibase:cornerNorthEast "Point(${E_.toFixed(3)} ${N_.toFixed(3)})"^^geo:wktLiteral . } ?item rdfs:label ?label FILTER(lang(?label)="ja" && REGEX(?label,"神社|神宮|大社|稲荷|八幡|天満宮|権現|明神|社$|宮$")) } LIMIT 500`;
+    const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),15000);let rows=null;
+    try{const r=await fetch("https://query.wikidata.org/sparql?query="+encodeURIComponent(q),{headers:{Accept:"application/sparql-results+json"},signal:ac.signal});if(r.ok)rows=(await r.json()).results.bindings;}catch(e){}finally{clearTimeout(tm);}
+    if(rows){const per=new Map(miss.map(c=>[c.join(),[]]));
+      rows.forEach(b=>{const m=b.loc.value.match(/Point\(([-\d.]+) ([-\d.]+)\)/);if(!m)return;const lo=+m[1],la=+m[2],n=b.label.value.normalize("NFKC");
+        if(!SHRINE_RE.test(n)||NOT_SHRINE_RE.test(n))return;const key=Math.floor(la/CELL)+","+Math.floor(lo/CELL);if(!per.has(key))return;
+        per.get(key).push({type:"Feature",properties:{k:"shrine",n},geometry:{type:"Point",coordinates:[+lo.toFixed(6),+la.toFixed(6)]}});});
+      for(const[key,fs]of per){out.set(key,fs);const[a,b]=key.split(",");poiStorePut("wds/"+a+"/"+b,fs);}}}
+  return [...out.values()].flat();}
 function schedulePoi(){clearTimeout(poiTimer);poiTimer=setTimeout(loadPoi,250);}
 async function loadPoi(){if(!map)return;const my=++poiSeq;
   if(map.getZoom()<11.9||!POI_CATS.some(c=>S.poi[c.k]!==false)){$("poiBusy").hidden=true;return;}
@@ -646,6 +662,8 @@ async function loadPoi(){if(!map)return;const my=++poiSeq;
   const wantHist=S.poi.kofun!==false||S.poi.iseki!==false;
   const histJob=wantHist?(async()=>{const cs=[];for(let a=Math.floor(bd.getSouth()/CELL);a<=Math.floor(bd.getNorth()/CELL);a++)for(let b=Math.floor(bd.getWest()/CELL);b<=Math.floor(bd.getEast()/CELL);b++)cs.push([a,b]);
     if(cs.length>16)return;try{const fs=await overpassCells(cs);got.set("op",fs);done();}catch(e){}})():null;
+  if(S.poi.shrine!==false)(async()=>{const cs=[];for(let a=Math.floor(bd.getSouth()/CELL);a<=Math.floor(bd.getNorth()/CELL);a++)for(let b=Math.floor(bd.getWest()/CELL);b<=Math.floor(bd.getEast()/CELL);b++)cs.push([a,b]);
+    if(cs.length>16)return;try{const fs=await wdShrineCells(cs);got.set("wds",fs);done();}catch(e){}})();
   // 地図データからの目印(神社など)は、史跡の窓口(Overpass)の返事を待たずにすぐ出す
   await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
   if(my!==poiSeq)return;done();$("poiBusy").hidden=true;}
