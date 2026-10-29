@@ -627,13 +627,13 @@ async function overpassCells(cells){
       for(const[key,fs]of per){out.set(key,fs);const[a,b]=key.split(",");poiStorePut("op/"+a+"/"+b,fs);}}}
   return [...out.values()].flat();}
 /* 神社の足りない分を Wikidata から足す(約5km四方ごとに保存して、2回目からはすぐ出す) */
-const SHRINE_RE=/神社|神宮|大社|稲荷|八幡宮|天満宮|権現|明神|坐|社$|宮$/;
+const SHRINE_RE=/神社|神宮|大社|稲荷|八幡宮|天満宮|権現|明神|社$/;
 const NOT_SHRINE_RE=/駅|バス|停留所|前$|公園|駐車|学校|町|村|市|郡|跡|古墳|寺|院|保育|病院|郵便|交番|通り|道$|橋$|山$|川$|池$/;
 async function wdShrineCells(cells){
   const out=new Map(),miss=[];
   for(const c of cells){const st=await poiStoreGet("wds/"+c[0]+"/"+c[1]);if(st)out.set(c.join(),st);else miss.push(c);}
   if(miss.length){const S_=Math.min(...miss.map(c=>c[0]))*CELL,W_=Math.min(...miss.map(c=>c[1]))*CELL,N_=(Math.max(...miss.map(c=>c[0]))+1)*CELL,E_=(Math.max(...miss.map(c=>c[1]))+1)*CELL;
-    const q=`SELECT ?label ?loc WHERE { SERVICE wikibase:box { ?item wdt:P625 ?loc . bd:serviceParam wikibase:cornerSouthWest "Point(${W_.toFixed(3)} ${S_.toFixed(3)})"^^geo:wktLiteral . bd:serviceParam wikibase:cornerNorthEast "Point(${E_.toFixed(3)} ${N_.toFixed(3)})"^^geo:wktLiteral . } ?item rdfs:label ?label FILTER(lang(?label)="ja" && REGEX(?label,"神社|神宮|大社|稲荷|八幡|天満宮|権現|明神|社$|宮$")) } LIMIT 500`;
+    const q=`SELECT ?label ?loc WHERE { SERVICE wikibase:box { ?item wdt:P625 ?loc . bd:serviceParam wikibase:cornerSouthWest "Point(${W_.toFixed(3)} ${S_.toFixed(3)})"^^geo:wktLiteral . bd:serviceParam wikibase:cornerNorthEast "Point(${E_.toFixed(3)} ${N_.toFixed(3)})"^^geo:wktLiteral . } ?item rdfs:label ?label FILTER(lang(?label)="ja" && REGEX(?label,"神社|神宮|大社|稲荷|八幡|天満宮|権現|明神|社$")) } LIMIT 500`;
     const ac=new AbortController();const tm=setTimeout(()=>ac.abort(),15000);let rows=null;
     try{const r=await fetch("https://query.wikidata.org/sparql?query="+encodeURIComponent(q),{headers:{Accept:"application/sparql-results+json"},signal:ac.signal});if(r.ok)rows=(await r.json()).results.bindings;}catch(e){}finally{clearTimeout(tm);}
     if(rows){const per=new Map(miss.map(c=>[c.join(),[]]));
