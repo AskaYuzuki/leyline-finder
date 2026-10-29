@@ -180,6 +180,11 @@ table.sun td:last-child,table.sun th:last-child{text-align:right}
 .pinpop.maplibregl-popup-anchor-top .maplibregl-popup-tip,.pinpop.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,.pinpop.maplibregl-popup-anchor-top-right .maplibregl-popup-tip{border-bottom-color:var(--night)}
 .pinpop.maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:var(--night)}
 .pinpop.maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:var(--night)}
+.ppname{display:flex;align-items:center;gap:6px;margin:0 22px 2px 0;cursor:text}
+.ppname b{flex:none}
+.ppname input[type=text]{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px dashed var(--star-deep);border-radius:0;padding:2px 0;font-weight:700;color:var(--text)}
+.ppname input[type=text]:focus{outline:none;border-bottom:1px solid var(--star);background:#0a1422}
+.ppedit{color:var(--muted);font-size:13px;flex:none}
 .pinpop .maplibregl-popup-close-button{color:var(--muted);font-size:20px;padding:2px 8px}
 .pp{display:flex;flex-direction:column;gap:7px;min-width:190px;padding-right:12px}
 .pp b{font-size:14px}
@@ -941,10 +946,17 @@ function openPinPop(id){
   const p=pinById(id); if(!p) return; if(pop) pop.remove();
   const isBase=S.sun.on&&S.sun.base===id;
   const el=document.createElement("div"); el.className="pp";
-  el.innerHTML=`<b>${pinNo(id)}. ${esc(p.name)}</b><div class="pc">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div>
+  el.innerHTML=`<label class="ppname"><b>${pinNo(id)}.</b><input type="text" data-pp-name value="${esc(p.name)}" maxlength="40" enterkeyhint="done" aria-label="ピンの名前"><span class="ppedit" aria-hidden="true">✎</span></label><div class="pc">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div>
     ${isBase?`<p class="pc" style="color:var(--star)">太陽の道の基点です</p>`:`<button class="btn gold small" data-pp="base">ここを太陽の道の基点にする</button>`}
     <button class="btn small" data-pp="fix">位置を直す</button>
     <button class="btn small danger" data-pp="del">この地点を消す</button>`;
+  // 名前を押すと書き換えられる。決定(改行・枠の外を押す)で、一覧・札・ライン名・凡例など全部に反映
+  const nameIn=el.querySelector("[data-pp-name]");
+  const commitName=()=>{const v=nameIn.value.replace(/\s+/g," ").trim();
+    if(!v){nameIn.value=p.name;return;}if(v===p.name)return;
+    p.name=v;save();renderAll();toast(`名前を「${v}」に変えました`);};
+  nameIn.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();nameIn.blur();}if(e.key==="Escape"){nameIn.value=p.name;nameIn.blur();}});
+  nameIn.addEventListener("blur",commitName);
   el.addEventListener("click",e=>{const b=e.target.closest("[data-pp]");if(!b)return;
     if(b.dataset.pp==="del"&&!b.dataset.armed){b.dataset.armed="1";b.textContent="本当に消す？もう一度押す";return;}
     if(b.dataset.pp==="del"){const nm=p.name;pop.remove();removePin(id);toast(`「${nm}」を消しました`);return;}
