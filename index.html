@@ -261,6 +261,8 @@ html.view .maplibregl-ctrl-bottom-right{margin-bottom:76px}
 .pvbar{display:flex;align-items:center;gap:10px;padding:8px max(10px,env(safe-area-inset-left,0px));color:var(--text);font-size:13px}
 .pvwrap iframe{flex:1;width:100%;border:0;background:#fff}
 .mmitem{flex-direction:column;align-items:stretch!important;gap:6px}
+.mmopen{border-color:var(--star-deep)!important}
+.mmnow{font-size:11px;font-weight:700;color:#1a1405;background:var(--star);border-radius:999px;padding:1px 8px;vertical-align:2px}
 .mmitem .row{flex-wrap:wrap!important;gap:6px}
 .copybox{display:flex;flex-direction:column;gap:6px;border:1px solid var(--night-3);border-radius:10px;padding:10px;background:var(--night-2)}
 .copybox textarea{width:100%;height:76px;font-size:12px!important;background:#0a1422;color:var(--text);border:1px solid var(--night-3);border-radius:8px;padding:6px;resize:none}
@@ -635,7 +637,7 @@ function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&
     if(s.globe===undefined)s.globe=true;
     // 開くたびに白紙から。前回のピンは「呼び出す」ボタンで戻せるように取っておく
     if(s.pins.length) s.prev={pins:s.pins,lines:s.lines,base:s.sun.base};
-    s.pins=[];s.lines=[];s.sun.base=null;
+    s.pins=[];s.lines=[];s.sun.base=null;s.openName=null;
     return s;}}catch(e){}const e=exampleState();e.v2=1;return e;}
 let swapping=false;
 function save(){if(VIEW||swapping)return;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
@@ -1233,7 +1235,7 @@ $("panel").addEventListener("transitionend",()=>map&&map.resize());
 $("tapAdd").onclick=()=>{S.tapAdd=!S.tapAdd;save();renderAll();toast(S.tapAdd?"地図をタップするとピンが立ちます":"タップしてもピンは立ちません(地図を動かすだけ)");};
 $("fitAll").onclick=()=>fitAll();
 $("clearAll").onclick=function(){
-  if(this.dataset.armed){S.pins=[];S.lines=[];S.sun.base=null;S.example=false;selPin=null;save();renderAll();this.textContent="すべて消す";delete this.dataset.armed;toast("ピンとラインをすべて消しました");return;}
+  if(this.dataset.armed){S.pins=[];S.lines=[];S.sun.base=null;S.example=false;selPin=null;S.openName=null;save();renderAll();this.textContent="すべて消す";delete this.dataset.armed;toast("ピンとラインをすべて消しました");return;}
   this.dataset.armed="1";this.textContent="本当に消す？もう一度押す";setTimeout(()=>{if(this.dataset.armed){delete this.dataset.armed;this.textContent="すべて消す";}},3500);};
 $("pinlist").addEventListener("change",e=>{const id=+e.target.dataset.rename;if(!id)return;const p=pinById(id);if(p){p.name=e.target.value.trim()||p.name;save();renderAll();}});
 $("pinlist").addEventListener("click",e=>{
@@ -1248,22 +1250,34 @@ $("pinlist").addEventListener("click",e=>{
 $("newLine").onclick=startBuild;
 /* ---- My Map：名前を付けて保存・一覧から開く ---- */
 function snapshot(){return JSON.parse(JSON.stringify({pins:S.pins,lines:S.lines,sun:S.sun,nsew:S.nsew,base:S.base}));}
+const isOpen=m=>!!(S.openName&&m.name===S.openName&&S.pins.length);
+const mapBody=o=>JSON.stringify({pins:o.pins,lines:o.lines,sun:o.sun,nsew:!!o.nsew});
 function renderMyMaps(){const L=S.saved||[];
-  $("myMaps").innerHTML=L.length?L.map((m,i)=>`<div class="item mmitem"><span><b>${esc(m.name)}</b><br><small class="note">${m.pins.length}か所・${esc(m.date)}</small></span><span class="row"><button class="btn small gold" data-mo="${i}">開く</button><button class="btn small" data-mn="${i}">Noteで使う</button><button class="btn small" data-mb="${i}">Blogで使う</button><button class="btn small danger" data-md="${i}" style="margin-left:auto">削除</button></span></div>`).join(""):`<p class="help">まだ保存した地図はありません。</p>`;}
+  $("myMaps").innerHTML=L.length?L.map((m,i)=>`<div class="item mmitem${isOpen(m)?" mmopen":""}"><span><b>${esc(m.name)}</b>${isOpen(m)?` <span class="mmnow">表示中</span>`:""}<br><small class="note">${m.pins.length}か所・${esc(m.date)}</small></span><span class="row"><button class="btn small gold" data-mo="${i}">開く</button>${isOpen(m)?`<button class="btn small" data-mc="${i}">閉じる</button>`:""}<button class="btn small" data-mn="${i}">Noteで使う</button><button class="btn small" data-mb="${i}">Blogで使う</button><button class="btn small danger" data-md="${i}" style="margin-left:auto">削除</button></span></div>`).join(""):`<p class="help">まだ保存した地図はありません。</p>`;}
 $("saveMap").onclick=()=>{if(!S.pins.length){toast("ピンを立ててから保存してください");return;}
   const nm=($("mapName").value.trim()||S.pins.map(p=>p.name).slice(0,2).join("・")).normalize("NFKC");
   const d=new Date(),date=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
   S.saved=S.saved||[];const k=S.saved.findIndex(m=>m.name===nm);const item={name:nm,date,...snapshot()};
   if(k>=0)S.saved[k]=item;else S.saved.unshift(item);if(S.saved.length>50)S.saved.length=50;
-  save();renderMyMaps();$("mapName").value="";toast(k>=0?`「${nm}」を上書き保存しました`:`「${nm}」を保存しました`);};
+  S.openName=nm;save();renderMyMaps();$("mapName").value="";toast(k>=0?`「${nm}」を上書き保存しました`:`「${nm}」を保存しました`);};
 $("myMaps").addEventListener("click",e=>{const o=e.target.closest("[data-mo]"),d=e.target.closest("[data-md]"),mn=e.target.closest("[data-mn]"),mb=e.target.closest("[data-mb]");
+  const mc=e.target.closest("[data-mc]");
+  if(mc){const m=S.saved[+mc.dataset.mc];
+    // 開いたあとに変えたところがあれば、保存せずに閉じてよいか一度だけ確かめる
+    if(mapBody(snapshot())!==mapBody(m)&&!mc.dataset.armed){mc.dataset.armed="1";mc.textContent="保存せずに閉じる？もう一度押す";
+      setTimeout(()=>{if(mc.isConnected&&mc.dataset.armed){delete mc.dataset.armed;mc.textContent="閉じる";}},4000);return;}
+    const before=snapshot(),nm=m.name;
+    S.pins=[];S.lines=[];S.sun.base=null;selPin=null;S.openName=null;if(pop)pop.remove();save();renderAll();
+    toastUndo(`「${nm}」を閉じました。My Map には残っています`,()=>{S.pins=before.pins;S.lines=before.lines;S.sun=before.sun;S.nsew=before.nsew;S.openName=nm;
+      S.seq.pin=Math.max(1,...S.pins.map(p=>p.id+1));S.seq.line=Math.max(1,...S.lines.map(l=>l.id+1));save();renderAll();fitAll();});return;}
   if(mn){const m=S.saved[+mn.dataset.mn];useForNote(m,m.name);return;}
   if(mb){const m=S.saved[+mb.dataset.mb];useForBlog(m,m.name);return;}
   if(o){const m=S.saved[+o.dataset.mo];const before=JSON.stringify(snapshot());
     S.pins=JSON.parse(JSON.stringify(m.pins));S.lines=JSON.parse(JSON.stringify(m.lines));S.sun=JSON.parse(JSON.stringify(m.sun));S.nsew=m.nsew;
     S.seq.pin=Math.max(1,...S.pins.map(p=>p.id+1));S.seq.line=Math.max(1,...S.lines.map(l=>l.id+1));
     if(m.base&&m.base!==S.base){S.base=m.base;styleFor(S.base).then(st=>map.setStyle(st,{diff:false}));}
-    save();renderAll();fitAll();toastUndo(`「${m.name}」を開きました`,()=>{const b=JSON.parse(before);S.pins=b.pins;S.lines=b.lines;S.sun=b.sun;S.nsew=b.nsew;save();renderAll();fitAll();});}
+    const prevOpen=S.openName;S.openName=m.name;
+    save();renderAll();fitAll();toastUndo(`「${m.name}」を開きました`,()=>{const b=JSON.parse(before);S.pins=b.pins;S.lines=b.lines;S.sun=b.sun;S.nsew=b.nsew;S.openName=prevOpen;save();renderAll();fitAll();});}
   if(d){const i=+d.dataset.md,m=S.saved[i];if(!d.dataset.armed){d.dataset.armed="1";d.textContent="本当に削除";return;}
     S.saved.splice(i,1);save();renderMyMaps();toast(`「${m.name}」を削除しました`);}});
 /* ---- ピンの並び順の入れ替え(Googleマップの経由地のように) ---- */
@@ -1644,6 +1658,7 @@ async function loadShared(){const h=location.hash;if(!/^#(m|z|j)=/.test(h))retur
       if(o.sun[2])SUN.forEach(([k],i)=>S.sun.show[k]=o.sun[2][i]==="1");S.nsew=!!o.sun[3];}
     if(o.base&&["osm","positron","std","photo"].includes(o.base))S.base=o.base;
     if(VIEW){viewTitle=o.title||"";return true;}
+    S.openName=null;
     save();history.replaceState(null,"",location.pathname+location.search);
     setTimeout(()=>toast(`共有された地図を開きました(${o.pins.length}か所)`),800);return true;}
   catch(e){setTimeout(()=>toast("共有のリンクを読み取れませんでした"),800);return false;}}
