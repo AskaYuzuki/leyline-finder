@@ -130,6 +130,9 @@ input[type=search]{width:100%}
 .wp.add .wplus{justify-self:center;color:var(--text);display:grid}
 .wp .wadd{all:unset;cursor:pointer;color:var(--muted);font-size:14px;padding:8px 2px}
 .wp .wadd:focus-visible{outline:2px solid var(--star)}
+.flash{animation:flash 1.2s ease 2}
+@keyframes flash{0%,100%{box-shadow:0 0 0 0 rgba(240,212,140,0)}40%{box-shadow:0 0 0 4px rgba(240,212,140,.85)}}
+@media (prefers-reduced-motion:reduce){.flash{animation:none}}
 .pinitem{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:center;background:var(--night-2);border:1px solid var(--night-3);border-radius:10px;padding:7px 8px}
 .pinitem.sel{border-color:var(--star)}
 .num{width:24px;height:24px;border-radius:50%;background:var(--night);border:2px solid var(--star);color:var(--star);display:grid;place-items:center;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -1238,10 +1241,17 @@ $("clearAll").onclick=function(){
   if(this.dataset.armed){S.pins=[];S.lines=[];S.sun.base=null;S.example=false;selPin=null;S.openName=null;save();renderAll();this.textContent="すべて消す";delete this.dataset.armed;toast("ピンとラインをすべて消しました");return;}
   this.dataset.armed="1";this.textContent="本当に消す？もう一度押す";setTimeout(()=>{if(this.dataset.armed){delete this.dataset.armed;this.textContent="すべて消す";}},3500);};
 $("pinlist").addEventListener("change",e=>{const id=+e.target.dataset.rename;if(!id)return;const p=pinById(id);if(p){p.name=e.target.value.trim()||p.name;save();renderAll();}});
+/* 「場所を追加」：検索欄へ移って、すぐ入力できるようにする(iPhoneでも確実に見えるよう、すぐ上まで戻して枠を光らせる) */
+function goSearch(){const q=$("q");const panel=$("panel");
+  if(panel.classList.contains("min")){panel.classList.remove("min");syncChev();setTimeout(()=>map&&map.resize(),280);}
+  try{q.focus({preventScroll:true});}catch(e){q.focus();}
+  let el=q.parentElement;while(el&&el!==document.body){const oy=getComputedStyle(el).overflowY;if((oy==="auto"||oy==="scroll")&&el.scrollHeight>el.clientHeight){el.scrollTop=0;break;}el=el.parentElement;}
+  const w=q.closest(".srow")||q;w.classList.remove("flash");void w.offsetWidth;w.classList.add("flash");
+  toast("探したい場所の名前を入れて、🔎を押してください");}
 $("pinlist").addEventListener("click",e=>{
   if(Date.now()-(window.__dragEnd||0)<450)return;
   const ob=e.target.closest("[data-open]");if(ob){const p=pinById(+ob.dataset.open);if(p){selPin=p.id;map.easeTo({center:[p.lon,p.lat],zoom:Math.max(map.getZoom(),13)});renderPinList();renderPins();setTimeout(()=>openPinPop(p.id),350);}return;}
-  if(e.target.closest("#wadd")){$("q").focus();$("q").scrollIntoView({block:"center",behavior:"smooth"});return;}
+  if(e.target.closest("#wadd")){goSearch();return;}
   const g=e.target.closest("[data-go]"),d=e.target.closest("[data-del]");
   if(g){const p=pinById(+g.dataset.go);selPin=p.id;map.easeTo({center:[p.lon,p.lat],zoom:Math.max(map.getZoom(),12)});renderAll();}
   if(d){const id=+d.dataset.del,snap=JSON.stringify({pins:S.pins,lines:S.lines,base:S.sun.base}),nm=(pinById(id)||{}).name;
