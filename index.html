@@ -1242,10 +1242,21 @@ $("clearAll").onclick=function(){
   this.dataset.armed="1";this.textContent="本当に消す？もう一度押す";setTimeout(()=>{if(this.dataset.armed){delete this.dataset.armed;this.textContent="すべて消す";}},3500);};
 $("pinlist").addEventListener("change",e=>{const id=+e.target.dataset.rename;if(!id)return;const p=pinById(id);if(p){p.name=e.target.value.trim()||p.name;save();renderAll();}});
 /* 「場所を追加」：検索欄へ移って、すぐ入力できるようにする(iPhoneでも確実に見えるよう、すぐ上まで戻して枠を光らせる) */
+/* iPhoneでキーボードが出たら、アプリ全体をキーボードの上の見えている範囲に収める(検索欄がキーボードに隠れないように) */
+(()=>{const vv=window.visualViewport;if(!vv)return;let on=false;
+  const fit=()=>{const app=$("app");const ae=document.activeElement;
+    const typing=ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&!/^(checkbox|radio|range|button)$/.test(ae.type||"");
+    const kb=window.innerHeight-vv.height>120;
+    if(typing&&kb){on=true;app.style.top=vv.offsetTop+"px";app.style.bottom=Math.max(0,window.innerHeight-vv.offsetTop-vv.height)+"px";}
+    else if(on){on=false;app.style.top="";app.style.bottom="";}
+    if(map)setTimeout(()=>map.resize(),60);};
+  vv.addEventListener("resize",fit);vv.addEventListener("scroll",fit);document.addEventListener("focusout",()=>setTimeout(fit,120));})();
 function goSearch(){const q=$("q");const panel=$("panel");
   if(panel.classList.contains("min")){panel.classList.remove("min");syncChev();setTimeout(()=>map&&map.resize(),280);}
-  try{q.focus({preventScroll:true});}catch(e){q.focus();}
+  // 先にパネルの中を一番上へ戻して検索欄を見える位置に置き、そのあと入力を始める(iPhoneは入力欄が見えるように画面を持ち上げてくれる)
   let el=q.parentElement;while(el&&el!==document.body){const oy=getComputedStyle(el).overflowY;if((oy==="auto"||oy==="scroll")&&el.scrollHeight>el.clientHeight){el.scrollTop=0;break;}el=el.parentElement;}
+  q.focus();
+
   const w=q.closest(".srow")||q;w.classList.remove("flash");void w.offsetWidth;w.classList.add("flash");
   toast("探したい場所の名前を入れて、🔎を押してください");}
 $("pinlist").addEventListener("click",e=>{
