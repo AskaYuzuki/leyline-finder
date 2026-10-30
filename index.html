@@ -1279,7 +1279,7 @@ function renderMyMaps(){const L=S.saved||[];
 $("saveMap").onclick=()=>{if(!S.pins.length){toast("ピンを立ててから保存してください");return;}
   const nm=($("mapName").value.trim()||S.pins.map(p=>p.name).slice(0,2).join("・")).normalize("NFKC");
   const d=new Date(),date=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-  S.saved=S.saved||[];const k=S.saved.findIndex(m=>m.name===nm);const item={name:nm,date,...snapshot()};
+  S.saved=S.saved||[];const k=S.saved.findIndex(m=>m.name===nm);const item={name:nm,date,...snapshot()};if(k>=0&&S.saved[k].ck)item.ck=S.saved[k].ck;
   if(k>=0)S.saved[k]=item;else S.saved.unshift(item);if(S.saved.length>50)S.saved.length=50;
   S.openName=nm;save();renderMyMaps();$("mapName").value="";toast(k>=0?`「${nm}」を上書き保存しました`:`「${nm}」を保存しました`);};
 $("myMaps").addEventListener("click",e=>{const o=e.target.closest("[data-mo]"),d=e.target.closest("[data-md]"),mn=e.target.closest("[data-mn]"),mb=e.target.closest("[data-mb]");
@@ -1292,7 +1292,7 @@ $("myMaps").addEventListener("click",e=>{const o=e.target.closest("[data-mo]"),d
     S.pins=[];S.lines=[];S.sun.base=null;selPin=null;S.openName=null;if(pop)pop.remove();save();renderAll();
     toastUndo(`「${nm}」を閉じました。My Map には残っています`,()=>{S.pins=before.pins;S.lines=before.lines;S.sun=before.sun;S.nsew=before.nsew;S.openName=nm;
       S.seq.pin=Math.max(1,...S.pins.map(p=>p.id+1));S.seq.line=Math.max(1,...S.lines.map(l=>l.id+1));save();renderAll();fitAll();});return;}
-  if(mn){const m=S.saved[+mn.dataset.mn];useForNote(m,m.name);return;}
+  if(mn){const m=S.saved[+mn.dataset.mn];useForNote(m,m.name,cardKey(m));return;}
   if(mb){const m=S.saved[+mb.dataset.mb];useForBlog(m,m.name);return;}
   if(o){const m=S.saved[+o.dataset.mo];const before=JSON.stringify(snapshot());
     S.pins=JSON.parse(JSON.stringify(m.pins));S.lines=JSON.parse(JSON.stringify(m.lines));S.sun=JSON.parse(JSON.stringify(m.sun));S.nsew=m.nsew;
@@ -1608,12 +1608,12 @@ async function makeCardImage(title){
     x.font=F(400,13);x.fillText(OFM[S.base]?"地図：OpenFreeMap © OpenStreetMap contributors":"地図：国土地理院",W-40,Y0+40);
     return await new Promise(r=>cv.toBlob(r,"image/jpeg",.86));
   }finally{try{off&&off.remove();}catch(e){}host.remove();}}
-async function noteUrlFor(st,title){
+async function noteUrlFor(st,title,k){
   const h=await packShort(title,st),fallback=APP_URL+"?view#"+h;
   if(!RELAY||!window.maplibregl)return {url:fallback,card:false};
   try{const blob=await withState(st,()=>makeCardImage(title));
     const d=st.pins.slice(0,4).map(p=>p.name).join("・")+(st.pins.length>4?" ほか":"");
-    const r=await fetch(RELAY+"/card",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({h,t:title,d,img:await blobToB64(blob)})});
+    const r=await fetch(RELAY+"/card",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({h,t:title,d,k:k||undefined,img:await blobToB64(blob)})});
     const j=await r.json();if(j.ok&&j.url)return {url:j.url,card:true};}catch(e){}
   return {url:fallback,card:false};}
 function busy(msg){const m=$("modal");m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" style="max-width:360px"><p style="margin:0">${esc(msg)}</p></div>`;m.hidden=false;}
@@ -1621,10 +1621,12 @@ function urlSheet(head,text,help){const m=$("modal");
   m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" style="max-width:440px"><h3>${esc(head)}</h3><p class="help" style="margin:0">${help}</p><textarea id="usText" readonly style="width:100%;height:96px;font-size:12px">${esc(text)}</textarea>
     <div class="row" style="justify-content:space-between"><button class="btn gold small" id="usCopy">コピー</button><button class="btn small" id="usClose">閉じる</button></div></div>`;
   m.hidden=false;$("usCopy").onclick=()=>copyText(text,"コピーしました",$("usText"));$("usClose").onclick=()=>{m.hidden=true;m.innerHTML="";};}
-async function useForNote(st,title){
+// My Mapごとのカードの合言葉(この端末の中だけに保存)。これがあると、中身を変えても同じカード(同じURL)を使い続ける
+function cardKey(m){if(!m)return "";if(!m.ck){const a=new Uint8Array(18);crypto.getRandomValues(a);m.ck=bytesToB64(a);save();}return m.ck;}
+async function useForNote(st,title,k){
   if(!st.pins.length){toast("ピンのある地図を選んでください");return;}
   busy("Note用のカード画像を作っています…(数秒〜十数秒)");
-  const pr=noteUrlFor(st,title),ok=await copyLater(pr.then(r=>r.url)),r=await pr;
+  const pr=noteUrlFor(st,title,k),ok=await copyLater(pr.then(r=>r.url)),r=await pr;
   const m=$("modal");m.hidden=true;m.innerHTML="";
   const help=r.card?"Noteの本文に貼り付けて改行すると、この地図の画像が大きく出るカードになります。":"いまはカード用の画像を預ける準備ができていないため、カードはアプリ共通の画像になります。";
   if(ok)toast((r.card?"Note用のURLをコピーしました。":"Note用のURLをコピーしました(カードは共通の画像)。")+"Noteの本文に貼って改行してください。");
@@ -1666,7 +1668,7 @@ function showEmbed(){if(!S.pins.length){toast("ピンを立ててから載せて
     <div class="row"><button class="btn small" id="emHowNote">Noteへの載せ方</button><button class="btn small" id="emHowBlog">Blogへの載せ方</button></div>
     <div class="row" style="justify-content:space-between"><button class="btn small" id="emPreview">見え方を確かめる</button><button class="btn small" id="emClose">閉じる</button></div></div>`;
   m.hidden=false;const close=()=>{m.hidden=true;m.innerHTML="";};$("emClose").onclick=close;
-  $("emNote").onclick=()=>{const t=curTitle();useForNote(snapshot(),t);};
+  $("emNote").onclick=()=>{const om=(S.saved||[]).find(m=>isOpen(m));const t=curTitle()||(om?om.name:"");useForNote(snapshot(),t,om?cardKey(om):"");};
   $("emBlog").onclick=()=>{const t=curTitle();close();useForBlog(snapshot(),t);};
   $("emPreview").onclick=()=>showPreview(snapshot(),curTitle());
   const reopen=()=>{const t=curTitle();return ()=>{showEmbed();$("emTitle").value=t;};};

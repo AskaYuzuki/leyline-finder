@@ -5,6 +5,7 @@
 // ・/card(POST)        … Noteに貼るカード用に、地図の画像とタイトルを預かり、短いURL(/n/番号)を返す
 // ・/n/番号             … Noteのカード用のページ。地図の画像・タイトルを見せ、人が開くと見るだけの地図へ移る
 // ・/i/番号.jpg         … カードの画像
+// ・/card/delete(POST) … カードを消す(作ったときの合言葉 k が必要)
 // ※ /card を使うには、Cloudflareで KV(名前空間)を作り、このWorkerに変数名「CARDS」で結び付けておく
 // LeyLine Finder(askayuzuki.github.io)からの問い合わせだけに答える
 
@@ -27,7 +28,7 @@ export default {
       if (!env.CARDS) return new Response("not found", { status: 404 });
       const img = await env.CARDS.get("i:" + m[1], { type: "arrayBuffer" });
       if (!img) return new Response("not found", { status: 404 });
-      return new Response(img, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" } });
+      return new Response(img, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=3600" } });
     }
     if (req.method === "GET" && (m = url.pathname.match(/^\/n\/([A-Za-z0-9_-]{8,20})$/))) {
       const rec = env.CARDS ? await env.CARDS.get("c:" + m[1], { type: "json" }) : null;
@@ -48,6 +49,18 @@ export default {
     }
 
     if (req.method === "OPTIONS") return new Response(null, { headers: { ...headers, "Access-Control-Allow-Methods": "GET, POST", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400" } });
+    // My Mapごとの合言葉(k)から番号を作る。合言葉は端末の中だけにあり、番号からは逆算できない
+    const idFromKey = async k => { const dg = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("k|" + k))); return btoa(String.fromCharCode(...dg.slice(0, 9))).replace(/\+/g, "-").replace(/\//g, "_"); };
+    const okKey = k => /^[A-Za-z0-9_-]{16,64}$/.test(k);
+    if (req.method === "POST" && url.pathname === "/card/delete") {
+      if (!ALLOWED_ORIGINS.includes(origin)) return reply({ error: "forbidden" }, 403);
+      if (!env.CARDS) return reply({ ok: false, error: "nokv" }, 501);
+      let b; try { b = await req.json(); } catch (e) { return reply({ error: "json" }, 400); }
+      const k = String(b.k || ""); if (!okKey(k)) return reply({ error: "k" }, 400);
+      const id = await idFromKey(k);
+      await env.CARDS.delete("i:" + id); await env.CARDS.delete("c:" + id);
+      return reply({ ok: true, id });
+    }
     if (req.method === "POST" && url.pathname === "/card") {
       if (!ALLOWED_ORIGINS.includes(origin)) return reply({ error: "forbidden" }, 403);
       if (!env.CARDS) return reply({ ok: false, error: "nokv" }, 501);
@@ -58,9 +71,12 @@ export default {
       if (!b64 || b64.length > 1400000) return reply({ error: "img" }, 400);
       let bytes; try { bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); } catch (e) { return reply({ error: "img" }, 400); }
       if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return reply({ error: "img" }, 400);
-      // 同じ地図・同じタイトルなら同じ番号(画像は新しいものに差し替える)
-      const dg = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(h + "|" + t)));
-      const id = btoa(String.fromCharCode(...dg.slice(0, 9))).replace(/\+/g, "-").replace(/\//g, "_");
+      // My Mapの合言葉(k)があれば、そのMy Mapでいつも同じ番号(中身を変えても画像を差し替えるだけ)。
+      // 合言葉がなければ、同じ地図・同じタイトルなら同じ番号
+      const k = String(b.k || "");
+      let id;
+      if (okKey(k)) id = await idFromKey(k);
+      else { const dg = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(h + "|" + t))); id = btoa(String.fromCharCode(...dg.slice(0, 9))).replace(/\+/g, "-").replace(/\//g, "_"); }
       await env.CARDS.put("i:" + id, bytes);
       await env.CARDS.put("c:" + id, JSON.stringify({ h, t, d, at: Date.now() }));
       return reply({ ok: true, id, url: url.origin + "/n/" + id });
