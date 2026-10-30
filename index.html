@@ -851,10 +851,11 @@ async function loadPoi(){if(!map)return;const my=++poiSeq;
   // 地図データからの目印(神社など)は、史跡の窓口(Overpass)の返事を待たずにすぐ出す
   await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
   if(my!==poiSeq)return;done();$("poiBusy").hidden=true;}
-/* 線の幅：実際の地面で5m。5mが2ピクセルより細くなる縮尺では2ピクセル */
+/* 線の幅：実際の地面で5m(縁取りなし)。5mが2ピクセルより細くなる縮尺では2ピクセル+縁取り */
 function wExpr(m,add){const mpp0=40075016.686*Math.cos(rad(m.getCenter().lat))/512;
   const px=z=>LINE_M*Math.pow(2,z)/mpp0, zA=Math.log2(MIN_PX*mpp0/LINE_M);
-  const st=[zA,MIN_PX+add];for(let z=Math.floor(zA)+1;z<=24;z++)st.push(z,px(z)+add);
+  // 縁取り(add)は、2ピクセルで描く縮尺のときだけ付ける。5mで描く縮尺では縁取りをなくし、ぴったり5mの幅にする
+  const st=[zA,MIN_PX+add];for(let z=Math.floor(zA)+1;z<=24;z++)st.push(z,px(z));
   return ["interpolate",["exponential",2],["zoom"],...st];}
 function applyWidths(m){if(!m.getLayer("lines"))return;
   [["lines",0],["lines-case",2],["sun-solid",0],["sun-dash",0],["sun-case",2]].forEach(([id,a])=>m.setPaintProperty(id,"line-width",wExpr(m,a)));}
