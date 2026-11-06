@@ -134,6 +134,10 @@ input[type=search]{width:100%}
   background:conic-gradient(from -32deg,rgba(29,111,233,.6) 0deg 64deg,transparent 64deg);
   -webkit-mask:radial-gradient(circle closest-side,transparent 0 21%,#000 22%,rgba(0,0,0,.45) 70%,transparent 100%);mask:radial-gradient(circle closest-side,transparent 0 21%,#000 22%,rgba(0,0,0,.45) 70%,transparent 100%)}
 .maplibregl-user-location-dot{z-index:1}
+.pill.hereoff{background:#1d6fe9;color:#fff;border-color:#1d6fe9}
+.geotip{position:absolute;z-index:5;transform:translateY(-50%);background:#0e1a2b;color:#fff;font-size:13px;font-weight:700;padding:6px 10px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,.3);pointer-events:none;transition:opacity .35s}
+.geotip::after{content:"";position:absolute;right:-6px;top:50%;transform:translateY(-50%);border:6px solid transparent;border-right:0;border-left-color:#0e1a2b}
+.geotip.out{opacity:0}
 .flash{animation:flash 1.2s ease 2}
 @keyframes flash{0%,100%{box-shadow:0 0 0 0 rgba(240,212,140,0)}40%{box-shadow:0 0 0 4px rgba(240,212,140,.85)}}
 @media (prefers-reduced-motion:reduce){.flash{animation:none}}
@@ -426,6 +430,7 @@ html.view .maplibregl-ctrl-bottom-right{margin-bottom:76px}
       <button class="pill" id="tapAdd" aria-pressed="true">タップでピンを立てる</button>
       <button class="pill" id="fitAll">全体を見る</button>
       <button class="pill" id="shareBtn">共有</button>
+      <button class="pill hereoff" id="hereOff" hidden>現在地の線を消す</button>
     </div>
     <div class="viewbar" id="viewbar"><div class="vt"><b id="vTitle">LeyLine Finder の地図</b><span>拡大・縮小して見られます</span></div>
       <div class="vb"><a id="vOpen" target="_blank" rel="noopener">アプリで開く</a><a class="gold" id="vMake" target="_blank" rel="noopener">自分でも作る</a></div></div>
@@ -863,19 +868,19 @@ function wExpr(m,add){const mpp0=40075016.686*Math.cos(rad(m.getCenter().lat))/5
   return ["interpolate",["exponential",2],["zoom"],...st];}
 function applyWidths(m){if(!m.getLayer("lines"))return;
   [["lines",0],["lines-case",2],["sun-solid",0],["sun-dash",0],["sun-case",2]].forEach(([id,a])=>m.setPaintProperty(id,"line-width",wExpr(m,a)));}
-function basePins(){if(!S.pins.length)return[];if(S.sun.base==="all")return S.pins;const b=pinById(S.sun.base);return b?[b]:[S.pins[0]];}
+function basePins(){if(here)return[here];if(!S.pins.length)return[];if(S.sun.base==="all")return S.pins;const b=pinById(S.sun.base);return b?[b]:[S.pins[0]];}
 const NSEW_C="#1d3557";
 /* 東西南北の線：南北は子午線(真北・真南)、東西は同じ緯度に沿った線 */
 function nsewLines(b){const L=SUN_LEN,n=nSeg(L);const ns=[],ew=[];
   for(let i=n;i>=0;i--)ns.push(dest(b,180,L*i/n));for(let i=1;i<=n;i++)ns.push(dest(b,0,L*i/n));
   const dlon=L/(111.32*Math.cos(rad(b.lat)));for(let i=-n;i<=n;i++)ew.push({lat:b.lat,lon:b.lon+dlon*i/n});
   return [ns,ew];}
-function sunBasePins(){if(!S.sun.on||!S.pins.length)return[];if(S.sun.base==="all")return S.pins;const b=pinById(S.sun.base);return b?[b]:[S.pins[0]];}
+function sunBasePins(){if(here)return[here];if(!S.sun.on||!S.pins.length)return[];if(S.sun.base==="all")return S.pins;const b=pinById(S.sun.base);return b?[b]:[S.pins[0]];}
 function overlayData(){
   const lf=[],sf=[];
   S.lines.forEach(L=>{if(!L.on)return;const g=lineGeom(L);if(!g)return;
     lf.push({type:"Feature",properties:{c:L.color,w:3.2},geometry:{type:"LineString",coordinates:g.pts.map(p=>[p.lon,p.lat])}});});
-  if(S.nsew) basePins().forEach(b=>nsewLines(b).forEach(pts=>sf.push({type:"Feature",properties:{c:NSEW_C,w:2,dash:0},geometry:{type:"LineString",coordinates:pts.map(p=>[p.lon,p.lat])}})));
+  if(S.nsew||here) basePins().forEach(b=>nsewLines(b).forEach(pts=>sf.push({type:"Feature",properties:{c:NSEW_C,w:2,dash:0},geometry:{type:"LineString",coordinates:pts.map(p=>[p.lon,p.lat])}})));
   sunBasePins().forEach(b=>SUN.forEach(([k,,dec,rise,c])=>{if(!S.sun.show[k])return;const A=sunAz(b.lat,dec);if(A==null)return;const az=rise?A:360-A;
     const n=nSeg(SUN_LEN),pts=[];for(let i=0;i<=n;i++)pts.push(dest(b,az,SUN_LEN*i/n));
     sf.push({type:"Feature",properties:{c,w:2.4,dash:rise?0:1},geometry:{type:"LineString",coordinates:unwrap(pts).map(p=>[p.lon,p.lat])}});}));
@@ -889,7 +894,7 @@ function labelSpecs(m){
     if(L.mode==="straight"||st.segs.length===1){const[a,b]=st.g.ends;const mid=gc(a,b,2)[1];
       out.push({kind:"line",lat:mid.lat,lon:mid.lon,c:L.color,text:`${fmtKm(st.len)}・方位 ${fmtDeg(st.az)}`});}
     else st.segs.forEach(s=>{const mid=gc(s.a,s.b,2)[1];out.push({kind:"line",lat:mid.lat,lon:mid.lon,c:L.color,text:`${fmtKm(s.d)}・${fmtDeg(s.az)}`});});});
-  if(S.nsew){const nb=basePins();const km=kmPerPx(m)*110;
+  if(S.nsew||here){const nb=basePins();const km=kmPerPx(m)*110;
     nb.forEach(b=>{[[0,"北"],[90,"東"],[180,"南"],[270,"西"]].forEach(([az,t])=>{const p=az%180===0?dest(b,az,km):{lat:b.lat,lon:b.lon+(az===90?1:-1)*km/(111.32*Math.cos(rad(b.lat)))};
       out.push({kind:"sun",lat:p.lat,lon:p.lon,c:NSEW_C,text:nb.length>1?t:`${t} ${az}°`});});});}
   const bases=sunBasePins();
@@ -909,11 +914,11 @@ async function initMap(){
   if(navigator.geolocation&&!VIEW){const geo=new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},trackUserLocation:true,showAccuracyCircle:true});
   // 向き(Googleマップのような扇形)：現在地ボタンを押したときに、方位の読み取りを許可してもらう
   if(!VIEW)setupHeading();
-    map.addControl(geo,"top-right");geo.on("error",()=>toast("現在地を取得できませんでした。iPhoneの設定で位置情報を許可してください"));}
+    map.addControl(geo,"top-right");geo.on("geolocate",pos=>{if(pos&&pos.coords)setHere(pos.coords.latitude,pos.coords.longitude);});geo.on("error",()=>toast("現在地を取得できませんでした。iPhoneの設定で位置情報を許可してください"));}
   map.addControl(new maplibregl.ScaleControl({unit:"metric"}),"bottom-right");
   // 地図の出典は小さな「ⓘ」だけにする(押すと出典が開く)
   const shrinkAttr=()=>document.querySelectorAll(".maplibregl-ctrl-attrib").forEach(el=>{el.classList.remove("maplibregl-compact-show");el.removeAttribute("open");});
-  map.on("load",()=>setTimeout(shrinkAttr,50));map.on("styledata",()=>setTimeout(shrinkAttr,50));
+  map.on("load",()=>{setTimeout(shrinkAttr,50);let n=0;const t=setInterval(()=>{if(++n>240){clearInterval(t);return;}if($("modal").hidden){clearInterval(t);setTimeout(geoTip,600);}},500);});map.on("styledata",()=>setTimeout(shrinkAttr,50));
   map.touchZoomRotate.disableRotation();
   map.on("style.load",()=>{applyProj(map);addOverlay(map);renderMap();schedulePoi();});
   map.on("zoomend",renderLabels);
@@ -1097,13 +1102,13 @@ function renderSun(){
     return `<tr><td><span class="key${rise?"":" dash"}" style="border-top-color:${c}"></span>${name}</td><td><input type="checkbox" data-sun="${k}" ${S.sun.show[k]?"checked":""} aria-label="${name}を表示" style="accent-color:var(--star)"></td><td>${az==null?"—":fmtDeg(az)+"("+dir16(az)+")"}</td></tr>`}).join("");
   // 太陽の道に乗るピン
   const hits=[];const tol=S.tol;
-  if(S.sun.on) sunBasePins().forEach(bp=>SUN.forEach(([k,name,dec,rise])=>{if(!S.sun.show[k])return;const A=sunAz(bp.lat,dec);if(A==null)return;const az=rise?A:360-A;
+  if(S.sun.on||here) sunBasePins().forEach(bp=>SUN.forEach(([k,name,dec,rise])=>{if(!S.sun.show[k])return;const A=sunAz(bp.lat,dec);if(A==null)return;const az=rise?A:360-A;
     const far=dest(bp,az,SUN_LEN);S.pins.forEach(p=>{if(p.id===bp.id)return;const x=xtrack(bp,far,p);if(Math.abs(x.xt)<=tol&&x.at>0&&x.at<=SUN_LEN)hits.push({bp,p,name,xt:x.xt,at:x.at});});}));
-  if(S.nsew) basePins().forEach(bp=>S.pins.forEach(p=>{if(p.id===bp.id)return;
+  if(S.nsew||here) basePins().forEach(bp=>S.pins.forEach(p=>{if(p.id===bp.id)return;
     const dNS=Math.abs(xtrack(bp,dest(bp,0,100),p).xt),dEW=Math.abs(p.lat-bp.lat)*111.2;
     if(dNS<=tol)hits.push({bp,p,name:p.lat>bp.lat?"南北(北側)":"南北(南側)",xt:dNS,at:dist(bp,p)});
     if(dEW<=tol)hits.push({bp,p,name:p.lon>bp.lon?"東西(東側)":"東西(西側)",xt:dEW,at:dist(bp,p)});}));
-  $("sunHits").innerHTML=!S.sun.on&&!S.nsew?`<p class="help">太陽の道を表示すると、線上(ずれ${tol}km以内)に乗るピンをここに出します。</p>`:
+  $("sunHits").innerHTML=!S.sun.on&&!S.nsew&&!here?`<p class="help">太陽の道を表示すると、線上(ずれ${tol}km以内)に乗るピンをここに出します。</p>`:
     hits.length?hits.map(h=>`<div class="item"><span>${circ(h.bp.id)} ${esc(h.bp.name)} の${h.name}の線上に <b>${circ(h.p.id)} ${esc(h.p.name)}</b></span><small class="note">${fmtKm(h.at)}先・ずれ${fmtKm(Math.abs(h.xt))}</small></div>`).join(""):
     `<p class="help">ずれ${tol}km以内で太陽の道に乗っているピンはありません(許容はライン画面で変えられます)。</p>`;
 }
@@ -1250,6 +1255,13 @@ $("clearAll").onclick=function(){
 $("pinlist").addEventListener("change",e=>{const id=+e.target.dataset.rename;if(!id)return;const p=pinById(id);if(p){p.name=e.target.value.trim()||p.name;save();renderAll();}});
 /* 現在地の向き：スマホの方位(コンパス)から、現在地の青い点に扇形を付ける */
 let headingOn=false,headingDeg=null,headingRaf=0;
+/* 現在地を起点にした太陽の道・東西南北の線。現在地ボタンを押すと始まり、「現在地の線を消す」で消える(保存はしない) */
+let here=null,hereArmed=false;
+function setHere(lat,lon){if(!hereArmed)return;
+  if(here&&dist(here,{lat,lon})<0.004)return; // 4m以内の動きでは描き直さない
+  const first=!here;here={id:"here",name:"現在地",lat,lon};$("hereOff").hidden=false;renderAll();
+  if(first)toast("現在地を起点に、太陽の道と東西南北の線を出しました");}
+function clearHere(){hereArmed=false;here=null;$("hereOff").hidden=true;renderAll();toast("現在地の線を消しました");}
 function drawHeading(){headingRaf=0;const dot=document.querySelector(".maplibregl-user-location-dot");if(!dot)return;
   let cone=dot.querySelector(".hcone");if(!cone){cone=document.createElement("div");cone.className="hcone";dot.appendChild(cone);}
   if(headingDeg==null){cone.style.display="none";return;}
@@ -1267,7 +1279,7 @@ function startHeading(){if(headingOn)return;
     else go();}catch(e){}}
 function setupHeading(){
   // 現在地ボタンを押した操作の中で許可を求める(iPhoneは押した直後でないと許可の画面が出ない)
-  document.addEventListener("click",e=>{if(e.target.closest(".maplibregl-ctrl-geolocate"))startHeading();},true);
+  document.addEventListener("click",e=>{if(e.target.closest(".maplibregl-ctrl-geolocate")){startHeading();hereArmed=true;}},true);
   // 点が作り直されたり、地図が動いたりしたら描き直す
   new MutationObserver(()=>{if(headingOn&&!headingRaf)headingRaf=requestAnimationFrame(drawHeading);}).observe(document.getElementById("map"),{childList:true,subtree:true});}
 /* 「場所を追加」：検索欄へ移って、すぐ入力できるようにする(iPhoneでも確実に見えるよう、すぐ上まで戻して枠を光らせる) */
@@ -1488,7 +1500,7 @@ async function exportJPG(want,btn,share){
     // 凡例の高さを先に見積もる
     const items=[];S.lines.forEach(L=>{if(!L.on)return;const st=lineStats(L);if(!st)return;
       items.push({c:L.color,dash:false,text:`${lineTitle(L)}　${L.mode==="straight"?fmtKm(st.len)+"・方位"+fmtDeg(st.az):"合計"+fmtKm(st.len)}`});});
-    if(S.nsew&&basePins().length)items.push({c:NSEW_C,dash:false,text:`東西南北の線(基点：${basePins().length>1?"各ピン":basePins()[0].name})`});
+    if((S.nsew||here)&&basePins().length)items.push({c:NSEW_C,dash:false,text:`東西南北の線(基点：${basePins().length>1?"各ピン":basePins()[0].name})`});
     const bps=sunBasePins();
     if(bps.length) SUN.forEach(([k,name,dec,rise,c])=>{if(!S.sun.show[k])return;const A=sunAz(bps[0].lat,dec);const az=A==null?null:rise?A:360-A;
       items.push({c,dash:!rise,text:`${name}${bps.length===1&&az!=null?"　"+fmtDeg(az):""}${bps.length===1?"(基点："+bps[0].name+")":"(各ピンから)"}`});});
@@ -1660,6 +1672,13 @@ function openShare(sel){shareSel=sel||{kind:"cur"};
     if(k==="howNote"||k==="howBlog"){const keep=$("shTitle").value,sel=shareSel;showSteps(k==="howNote"?"Noteへの載せ方":"Blogへの載せ方",k==="howNote"?HOW_NOTE:HOW_BLOG,()=>{openShare(sel);$("shTitle").value=keep;});return;}};
 }
 $("shareBtn").onclick=()=>openShare({kind:"cur"});
+$("hereOff").onclick=clearHere;
+/* はじめての人に、現在地ボタンの場所を吹き出しで3秒だけ知らせる */
+function geoTip(){try{if(VIEW||localStorage.getItem("leyline-geotip"))return;}catch(e){return;}
+  const btn=document.querySelector(".maplibregl-ctrl-geolocate");if(!btn)return;const wrap=$("mapwrap"),r=btn.getBoundingClientRect(),w=wrap.getBoundingClientRect();
+  const tip=document.createElement("div");tip.className="geotip";tip.textContent="現在地";wrap.appendChild(tip);
+  tip.style.top=(r.top-w.top+r.height/2)+"px";tip.style.right=(w.right-r.left+10)+"px";
+  setTimeout(()=>{tip.classList.add("out");setTimeout(()=>tip.remove(),400);},3000);try{localStorage.setItem("leyline-geotip","1");}catch(e){}}
 $("shareAll").onclick=()=>openShare({kind:"cur"});
 /* 記事に載せる：Noteは地図の画像のカードになるURL、Blogは記事の中で動かせる地図のコード */
 async function copyText(t,okMsg,ta){try{await navigator.clipboard.writeText(t);toast(okMsg);}catch(e){if(ta){ta.focus();ta.select();}toast("文字を長押ししてコピーしてください");}}
