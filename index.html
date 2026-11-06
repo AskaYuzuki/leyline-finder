@@ -130,6 +130,10 @@ input[type=search]{width:100%}
 .wp.add .wplus{justify-self:center;color:var(--text);display:grid}
 .wp .wadd{all:unset;cursor:pointer;color:var(--muted);font-size:14px;padding:8px 2px}
 .wp .wadd:focus-visible{outline:2px solid var(--star)}
+.hcone{position:absolute;left:50%;top:50%;width:110px;height:110px;pointer-events:none;z-index:-1;
+  background:conic-gradient(from -32deg,rgba(29,111,233,.6) 0deg 64deg,transparent 64deg);
+  -webkit-mask:radial-gradient(circle closest-side,transparent 0 21%,#000 22%,rgba(0,0,0,.45) 70%,transparent 100%);mask:radial-gradient(circle closest-side,transparent 0 21%,#000 22%,rgba(0,0,0,.45) 70%,transparent 100%)}
+.maplibregl-user-location-dot{z-index:1}
 .flash{animation:flash 1.2s ease 2}
 @keyframes flash{0%,100%{box-shadow:0 0 0 0 rgba(240,212,140,0)}40%{box-shadow:0 0 0 4px rgba(240,212,140,.85)}}
 @media (prefers-reduced-motion:reduce){.flash{animation:none}}
@@ -903,6 +907,8 @@ async function initMap(){
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"top-right");
   // 現在地(神社めぐりの現地で、自分がどこにいるかを地図に出す)
   if(navigator.geolocation&&!VIEW){const geo=new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},trackUserLocation:true,showAccuracyCircle:true});
+  // 向き(Googleマップのような扇形)：現在地ボタンを押したときに、方位の読み取りを許可してもらう
+  if(!VIEW)setupHeading();
     map.addControl(geo,"top-right");geo.on("error",()=>toast("現在地を取得できませんでした。iPhoneの設定で位置情報を許可してください"));}
   map.addControl(new maplibregl.ScaleControl({unit:"metric"}),"bottom-right");
   // 地図の出典は小さな「ⓘ」だけにする(押すと出典が開く)
@@ -1242,6 +1248,28 @@ $("clearAll").onclick=function(){
   if(this.dataset.armed){S.pins=[];S.lines=[];S.sun.base=null;S.example=false;selPin=null;S.openName=null;save();renderAll();this.textContent="すべて消す";delete this.dataset.armed;toast("ピンとラインをすべて消しました");return;}
   this.dataset.armed="1";this.textContent="本当に消す？もう一度押す";setTimeout(()=>{if(this.dataset.armed){delete this.dataset.armed;this.textContent="すべて消す";}},3500);};
 $("pinlist").addEventListener("change",e=>{const id=+e.target.dataset.rename;if(!id)return;const p=pinById(id);if(p){p.name=e.target.value.trim()||p.name;save();renderAll();}});
+/* 現在地の向き：スマホの方位(コンパス)から、現在地の青い点に扇形を付ける */
+let headingOn=false,headingDeg=null,headingRaf=0;
+function drawHeading(){headingRaf=0;const dot=document.querySelector(".maplibregl-user-location-dot");if(!dot)return;
+  let cone=dot.querySelector(".hcone");if(!cone){cone=document.createElement("div");cone.className="hcone";dot.appendChild(cone);}
+  if(headingDeg==null){cone.style.display="none";return;}
+  cone.style.display="";cone.style.transform=`translate(-50%,-50%) rotate(${headingDeg-(map?map.getBearing():0)}deg)`;}
+function onOrient(e){let h=null;
+  if(typeof e.webkitCompassHeading==="number")h=e.webkitCompassHeading;              // iPhone
+  else if(e.absolute&&typeof e.alpha==="number")h=360-e.alpha;                        // Android
+  if(h==null||isNaN(h))return;
+  const so=(screen.orientation&&screen.orientation.angle)||window.orientation||0;if(typeof e.webkitCompassHeading!=="number")h+=so;
+  headingDeg=(h%360+360)%360;if(!headingRaf)headingRaf=requestAnimationFrame(drawHeading);}
+function startHeading(){if(headingOn)return;
+  const go=()=>{headingOn=true;if("ondeviceorientationabsolute" in window)addEventListener("deviceorientationabsolute",onOrient);else addEventListener("deviceorientation",onOrient);};
+  try{if(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==="function"){
+      DeviceOrientationEvent.requestPermission().then(r=>{if(r==="granted")go();else toast("向きを出すには、方位の利用を許可してください");}).catch(()=>{});}
+    else go();}catch(e){}}
+function setupHeading(){
+  // 現在地ボタンを押した操作の中で許可を求める(iPhoneは押した直後でないと許可の画面が出ない)
+  document.addEventListener("click",e=>{if(e.target.closest(".maplibregl-ctrl-geolocate"))startHeading();},true);
+  // 点が作り直されたり、地図が動いたりしたら描き直す
+  new MutationObserver(()=>{if(headingOn&&!headingRaf)headingRaf=requestAnimationFrame(drawHeading);}).observe(document.getElementById("map"),{childList:true,subtree:true});}
 /* 「場所を追加」：検索欄へ移って、すぐ入力できるようにする(iPhoneでも確実に見えるよう、すぐ上まで戻して枠を光らせる) */
 /* iPhoneでキーボードが出たら、アプリ全体をキーボードの上の見えている範囲に収める(検索欄がキーボードに隠れないように) */
 (()=>{const vv=window.visualViewport;if(!vv)return;let on=false;
