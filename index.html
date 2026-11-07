@@ -914,7 +914,7 @@ async function initMap(){
   if(navigator.geolocation&&!VIEW){const geo=new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},trackUserLocation:true,showAccuracyCircle:true});
   // 向き(Googleマップのような扇形)：現在地ボタンを押したときに、方位の読み取りを許可してもらう
   if(!VIEW)setupHeading();
-    map.addControl(geo,"top-right");geo.on("geolocate",pos=>{if(pos&&pos.coords)setHere(pos.coords.latitude,pos.coords.longitude);});geo.on("error",()=>toast("現在地を取得できませんでした。iPhoneの設定で位置情報を許可してください"));}
+    map.addControl(geo,"top-right");geo.on("geolocate",pos=>{if(pos&&pos.coords){lastPos={lat:pos.coords.latitude,lon:pos.coords.longitude};setHere(lastPos.lat,lastPos.lon);}});geo.on("error",()=>toast("現在地を取得できませんでした。iPhoneの設定で位置情報を許可してください"));}
   map.addControl(new maplibregl.ScaleControl({unit:"metric"}),"bottom-right");
   // 地図の出典は小さな「ⓘ」だけにする(押すと出典が開く)
   const shrinkAttr=()=>document.querySelectorAll(".maplibregl-ctrl-attrib").forEach(el=>{el.classList.remove("maplibregl-compact-show");el.removeAttribute("open");});
@@ -1256,7 +1256,7 @@ $("pinlist").addEventListener("change",e=>{const id=+e.target.dataset.rename;if(
 /* 現在地の向き：スマホの方位(コンパス)から、現在地の青い点に扇形を付ける */
 let headingOn=false,headingDeg=null,headingRaf=0;
 /* 現在地を起点にした太陽の道・東西南北の線。現在地ボタンを押すと始まり、「現在地の線を消す」で消える(保存はしない) */
-let here=null,hereArmed=false;
+let here=null,hereArmed=false,lastPos=null;
 function setHere(lat,lon){if(!hereArmed)return;
   if(here&&dist(here,{lat,lon})<0.004)return; // 4m以内の動きでは描き直さない
   const first=!here;here={id:"here",name:"現在地",lat,lon};$("hereOff").hidden=false;renderAll();
@@ -1281,6 +1281,13 @@ function setupHeading(){
   // 現在地ボタンを押した操作の中で許可を求める(iPhoneは押した直後でないと許可の画面が出ない)
   document.addEventListener("click",e=>{if(e.target.closest(".maplibregl-ctrl-geolocate")){startHeading();hereArmed=true;}},true);
   // 点が作り直されたり、地図が動いたりしたら描き直す
+  // 現在地の青い点をタップしたら、そこにピンを立てる(位置を合わせる画面へ)。点が小さいので、まわり24ピクセルまで反応させる
+  const tapDot=e=>{if(VIEW||build||place||!lastPos)return false;const dot=document.querySelector(".maplibregl-user-location-dot");if(!dot)return false;
+    const r=dot.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;const t=e.changedTouches?e.changedTouches[0]:e;
+    if(Math.hypot(t.clientX-cx,t.clientY-cy)>24)return false;
+    e.stopPropagation();suppressClick=Date.now();if(pop)pop.remove();
+    startPlace({lat:lastPos.lat,lon:lastPos.lon,name:"",zoom:Math.max(map.getZoom(),17)});toast("現在地にピンを立てます。位置を合わせて「この場所でOK」を押してください");return true;};
+  document.getElementById("map").addEventListener("click",e=>{if(Date.now()-suppressClick<350)return;tapDot(e);},true);
   new MutationObserver(()=>{if(headingOn&&!headingRaf)headingRaf=requestAnimationFrame(drawHeading);}).observe(document.getElementById("map"),{childList:true,subtree:true});}
 /* 「場所を追加」：検索欄へ移って、すぐ入力できるようにする(iPhoneでも確実に見えるよう、すぐ上まで戻して枠を光らせる) */
 /* iPhoneでキーボードが出たら、アプリ全体をキーボードの上の見えている範囲に収める(検索欄がキーボードに隠れないように) */
