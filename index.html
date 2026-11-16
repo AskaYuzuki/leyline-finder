@@ -376,6 +376,16 @@ html.view .maplibregl-ctrl-bottom-right{margin-bottom:76px}
           <div class="srow"><div class="qwrap"><input type="text" id="mapName" placeholder="例 御来光の道" maxlength="40"></div><button class="btn gold" id="saveMap" style="font-size:13px">保存</button></div>
           <div id="myMaps" class="found"></div>
         </div>
+        <div class="group" id="offGroup">
+          <h2>オフライン用に地図を保存</h2>
+          <p class="help">電波のない山の神社などで使うときは、出かける前に行く場所を地図に出して「この範囲を保存」を押してください。保存した範囲は、電波がなくても地図が出ます。一度見た場所の地図も、自動でiPhoneに少し残ります。航空写真は保存しません。</p>
+          <label class="check"><input type="checkbox" id="offGsi" checked> 国土地理院の地図も保存する</label>
+          <p class="note" id="offEst" style="margin:0"></p>
+          <button class="btn gold" id="offSave" style="align-self:flex-start">この範囲を保存</button>
+          <div id="offProg" class="note" hidden></div>
+          <div id="offList" class="found"></div>
+          <p class="note" id="offUse" style="margin:0"></p>
+        </div>
         <div class="group">
           <h2>地図の種類</h2>
           <div class="radios" id="baseRadios">
@@ -924,7 +934,7 @@ async function initMap(){
   map.touchZoomRotate.disableRotation();
   map.on("style.load",()=>{applyProj(map);addOverlay(map);renderMap();schedulePoi();});
   map.on("zoomend",renderLabels);
-  map.on("moveend",()=>{applyWidths(map);schedulePoi();});
+  map.on("moveend",()=>{applyWidths(map);schedulePoi();{const tm=document.getElementById("tab-map");if(tm&&!tm.hidden)offEstimate();}});
   map.on("move",updCoord);
   map.on("click","cands",e=>{const i=e.features[0].properties.i-1;const r=lastResults[i];if(!r)return;suppressClick=Date.now();
     searchSeq++;clearTimeout(qT);$("results").innerHTML="";clearCands();
@@ -1057,7 +1067,7 @@ function findAlignments(tol){
 
 /* ============ パネル描画 ============ */
 const $=id=>document.getElementById(id);
-function showTab(t){document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===t?"true":"false"));
+function showTab(t){if(t==="map")setTimeout(()=>{try{offEstimate();}catch(e){}},0);document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===t?"true":"false"));
   ["pins","lines","sun","map"].forEach(k=>$("tab-"+k).hidden=k!==t);}
 function renderPinList(){
   $("pinCount").textContent=`${S.pins.length}/${MAXP}`;
@@ -1116,7 +1126,7 @@ function renderSun(){
 }
 function renderPoiChecks(){$("poiChecks").innerHTML=POI_CATS.map(c=>`<label class="check"><input type="checkbox" data-poi="${c.k}" ${S.poi[c.k]!==false?"checked":""}> <span class="dotk" style="background:${c.c}"></span>${c.t}</label>`).join("");}
 function applyPoi(m){POI_CATS.forEach(c=>["","-l"].forEach(x=>{if(m.getLayer("poi-"+c.k+x))m.setLayoutProperty("poi-"+c.k+x,"visibility",S.poi[c.k]!==false?"visible":"none");}));}
-function renderMapTab(){renderPoiChecks();renderMyMaps();document.querySelectorAll('input[name=base]').forEach(r=>r.checked=r.value===S.base);$("relief").checked=S.relief;$("globe").checked=S.globe!==false;$("labels").checked=S.labels;$("names").checked=S.names;$("tol").value=S.tol;}
+function renderMapTab(){renderPoiChecks();renderMyMaps();renderOffline();document.querySelectorAll('input[name=base]').forEach(r=>r.checked=r.value===S.base);$("relief").checked=S.relief;$("globe").checked=S.globe!==false;$("labels").checked=S.labels;$("names").checked=S.names;$("tol").value=S.tol;}
 function renderAll(){[renderPinList,renderLines,renderSun,renderMapTab,renderMap].forEach(f=>{try{f();}catch(e){console.error(e);}});
   $("tapAdd").setAttribute("aria-pressed",String(!!S.tapAdd));}
 
@@ -1167,6 +1177,17 @@ async function wikidata(q,near){try{
 async function wiki(q){try{const r=await fetch(`https://ja.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=6&gsrsearch=${encodeURIComponent(q)}&prop=coordinates&colimit=6`);const j=await r.json();
   return Object.values((j.query&&j.query.pages)||{}).filter(p=>p.coordinates&&p.coordinates[0]).sort((a,b)=>a.index-b.index).map(p=>({name:p.title,lat:p.coordinates[0].lat,lon:p.coordinates[0].lon,where:"",kind:"Wikipedia"})).filter(x=>inJP(x.lat,x.lon));}catch(e){return null;}}
 let searchSeq=0,lastResults=[];
+/* 電波がないときの検索：アプリに入れてある全国の神社・お寺・山(約4万件)から探す(places.js。iPhoneに保存済み) */
+let placeIdx=null;
+function loadPlaces(){if(placeIdx)return Promise.resolve(placeIdx);return new Promise(res=>{if(window.PLACE_DATA){res(build());return;}
+  const sc=document.createElement("script");sc.src="places.js";sc.onload=()=>res(build());sc.onerror=()=>res(null);document.head.appendChild(sc);
+  function build(){try{placeIdx=PLACE_DATA.split("\n").map(r=>{const a=r.split("\t");return {n:a[0],k:norm(a[0]),lat:a[1]/1e5,lon:a[2]/1e5,t:+a[3],p:PLACE_META.prefs[+a[4]]||"",m:PLACE_META.munis[+a[5]]||""};});}catch(e){placeIdx=null;}return placeIdx;}});}
+async function localSearch(q){const idx=await loadPlaces();if(!idx)return [];const toks=q.normalize("NFKC").split(/\s+/).filter(Boolean).map(norm);if(!toks.length)return [];
+  const T=["神社","お寺","山"],out=[];
+  for(const x of idx){let sc=0,ok=true;for(const t of toks){if(x.k.includes(t))sc+=3;else if(norm(x.p+x.m).includes(t))sc+=1;else{ok=false;break;}}
+    if(!ok)continue;if(x.k===toks.join(""))sc+=20;else if(x.k.startsWith(toks[0]))sc+=5;out.push({x,sc});}
+  out.sort((a,b)=>b.sc-a.sc||a.x.n.length-b.x.n.length);
+  return out.slice(0,30).map(({x})=>({name:x.n,lat:x.lat,lon:x.lon,sub:[[x.p,x.m].filter(Boolean).join(" "),T[x.t]||"",  "アプリ内の一覧"].filter(Boolean).join("・")}));}
 async function doSearch(q){
   const my=++searchSeq;q=q.trim();const note=$("searchNote");note.hidden=true;
   if(!q){$("results").innerHTML="";clearCands();return;}
@@ -1184,8 +1205,13 @@ async function doSearch(q){
   const nq=norm(q);
   let toks=q.split(/\s+/).filter(Boolean);
   // 1回目：そのままの言葉で探す
+  // 電波がないときは、アプリに入れてある一覧から探す
+  if(!navigator.onLine&&offOk()){const loc=await localSearch(q);if(my!==searchSeq)return;showResults(loc);
+    if(!loc.length){note.hidden=false;note.textContent="電波がないため、アプリに入れてある神社・お寺・山の一覧から探しましたが、見つかりませんでした。";}
+    else{note.hidden=false;note.textContent="電波がないため、アプリに入れてある神社・お寺・山の一覧から探しています。";}return;}
   const first=await Promise.all([photon(q,15),nominatim(q,8),wiki(q),wikidata(q)]); if(my!==searchSeq) return;
   const failed=first.every(g=>g===null);
+  if(failed&&offOk()){const loc=await localSearch(q);if(my!==searchSeq)return;if(loc.length){showResults(loc);note.hidden=false;note.textContent="ネットにつながらないため、アプリに入れてある神社・お寺・山の一覧から探しました。";return;}}
   let cand=[].concat(...first.map(g=>g||[]));
   const exact=cand.some(x=>norm(x.name).includes(nq));
   // 区切りがなく、名前どおりの結果がないときは「場所＋御神木・磐座など」に分ける
@@ -1319,6 +1345,65 @@ $("pinlist").addEventListener("click",e=>{
     removePin(id);toastUndo(`「${nm}」を削除しました`,()=>{const o=JSON.parse(snap);S.pins=o.pins;S.lines=o.lines;S.sun.base=o.base;save();renderAll();});}
   const fx=e.target.closest("[data-fix]");if(fx){const p=pinById(+fx.dataset.fix);startPlace({lat:p.lat,lon:p.lon,name:p.name,zoom:Math.max(map.getZoom(),17),editId:p.id});}});
 $("newLine").onclick=startBuild;
+/* ---- オフライン用の地図の保存 ----
+   標準・淡色(OpenFreeMap)は同じ地図データ(ズーム14まで)を使うので1回の保存で両方に効く。国土地理院の標準地図はズーム18まで。
+   保存先はサービスワーカーと同じ Cache(leyline-saved-v1)。名前の付け方(tileKey)もサービスワーカーと同じにする */
+const OFF_CACHE="leyline-saved-v1",OFF_MAX=9000,OFF_VZ=14,OFF_GZ=18;
+const offOk=()=>"caches" in window&&"serviceWorker" in navigator&&!VIEW&&/askayuzuki\.github\.io|localhost/.test(location.host);
+function tileKeyOf(url){const u=new URL(url);if(u.hostname==="tiles.openfreemap.org"){const m=u.pathname.match(/^\/planet\/[^/]+\/(\d+\/\d+\/\d+\.pbf)$/);if(m)return "https://tiles.openfreemap.org/planet/_/"+m[1];}return u.origin+u.pathname;}
+const lon2x=(lon,z)=>Math.floor((lon+180)/360*2**z),lat2y=(lat,z)=>{const r=rad(Math.max(-85,Math.min(85,lat)));return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*2**z);};
+function offTiles(b,gsi){const out=[];const add=(z0,z1,kind)=>{for(let z=z0;z<=z1;z++){const x0=lon2x(b.w,z),x1=lon2x(b.e,z),y0=lat2y(b.n,z),y1=lat2y(b.s,z);
+    for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)out.push([kind,z,x,y]);}};
+  add(0,OFF_VZ,"v");if(gsi)add(2,OFF_GZ,"g");return out;}
+const offBytes=t=>t.reduce((a,[k])=>a+(k==="v"?38e3:22e3),0);
+const fmtMB=b=>b<1e6?"1MB未満":b<1e9?Math.round(b/1e6)+"MB":(b/1e9).toFixed(1)+"GB";
+function curBounds(){const bd=map.getBounds();return {w:bd.getWest(),s:bd.getSouth(),e:bd.getEast(),n:bd.getNorth()};}
+function offEstimate(){if(!map||!$("offEst"))return;const t=offTiles(curBounds(),$("offGsi").checked);
+  $("offEst").textContent=t.length>OFF_MAX?`いまの範囲は広すぎます(およそ${fmtMB(offBytes(t))})。地図を拡大して、行く場所のまわりだけにしてください。`:`いま表示している範囲を保存します(およそ${fmtMB(offBytes(t))})。`;
+  $("offSave").disabled=t.length>OFF_MAX;}
+async function offUsage(){try{const e=await navigator.storage.estimate();$("offUse").textContent=`このアプリがiPhoneで使っている容量：約${fmtMB(e.usage||0)}`;}catch(e){}}
+function renderOffline(){const g=$("offGroup");if(!g)return;if(!offOk()){g.hidden=true;return;}
+  const L=S.offline||[];
+  $("offList").innerHTML=L.map((a,i)=>`<div class="item"><span><b>${esc(a.name)}</b><br><small class="note">${esc(a.date)}・約${fmtMB(a.bytes)}${a.gsi?"・国土地理院も":""}</small></span><span class="row" style="flex-wrap:nowrap"><button class="btn small" data-offgo="${i}">表示</button><button class="btn small danger" data-offdel="${i}">削除</button></span></div>`).join("");
+  offEstimate();offUsage();}
+let offBusy=false;
+async function offSave(){if(offBusy||!map)return;const b=curBounds(),gsi=$("offGsi").checked,list=offTiles(b,gsi);
+  if(list.length>OFF_MAX){offEstimate();return;}
+  if(!navigator.onLine){toast("電波があるところで保存してください");return;}
+  offBusy=true;$("offSave").disabled=true;const prog=$("offProg");prog.hidden=false;prog.textContent="保存の準備をしています…";
+  try{try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist();}catch(e){}
+    const tpl=await poiTemplate();const cache=await caches.open(OFF_CACHE);
+    // 地図のスタイル・記号・文字も保存(電波がないときに地図の見た目を組み立てるため)
+    const extra=[OFM.osm,OFM.positron,"https://tiles.openfreemap.org/planet"];
+    for(const u of [OFM.osm,OFM.positron]){try{const st=await (await fetch(u)).json();if(st.sprite){const sp=typeof st.sprite==="string"?[st.sprite]:st.sprite.map(x=>x.url);sp.forEach(p=>["",".json",".png","@2x.json","@2x.png"].slice(1).forEach(x=>extra.push(p+x)));}
+      const fonts=new Set();st.layers.forEach(l=>{const f=l.layout&&l.layout["text-font"];if(Array.isArray(f)&&f.every(x=>typeof x==="string"))fonts.add(f.join(","));});
+      fonts.add("Noto Sans Regular");fonts.add("Noto Sans Bold");
+      fonts.forEach(f=>["0-255","256-511","8192-8447","12288-12543","65280-65535"].forEach(r=>extra.push(`https://tiles.openfreemap.org/fonts/${encodeURIComponent(f)}/${r}.pbf`)));}catch(e){}}
+    for(const u of extra){try{const r=await fetch(u);if(r.ok)await cache.put(u,r);}catch(e){}}
+    const urlOf=([k,z,x,y])=>k==="v"?tpl.replace("{z}",z).replace("{x}",x).replace("{y}",y):`https://cyberjapandata.gsi.go.jp/xyz/std/${z}/${x}/${y}.png`;
+    let done=0,fail=0,bytes=0,i=0;
+    const worker=async()=>{while(i<list.length){const t=list[i++];const url=urlOf(t),key=tileKeyOf(url);
+        try{if(!(await cache.match(key))){const r=await fetch(url);if(r.ok){const bl=await r.clone().blob();bytes+=bl.size;await cache.put(key,r);}else if(r.status!==404&&r.status!==204)fail++;}}catch(e){fail++;}
+        done++;if(done%20===0||done===list.length)prog.textContent=`保存しています… ${done} / ${list.length}`;}};
+    await Promise.all(Array.from({length:6},worker));
+    const d=new Date();const om=(S.saved||[]).find(m=>isOpen(m));
+    const name=om?om.name:(S.pins[0]?`${S.pins[0].name}のまわり`:`保存した範囲 ${(S.offline||[]).length+1}`);
+    S.offline=S.offline||[];S.offline.unshift({name,date:`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`,b,gsi,bytes:bytes||offBytes(list)});save();
+    prog.textContent=fail?`保存しました(${fail}枚は取れませんでした。電波のよいところでもう一度押すと足りない分だけ取ります)`:"保存しました。電波がなくても、この範囲の地図が出ます";toast(`「${name}」の地図を保存しました`);
+  }catch(e){prog.textContent="保存できませんでした。電波のよいところでもう一度お試しください";}
+  finally{offBusy=false;renderOffline();}}
+async function offDelete(i){const a=S.offline[i];if(!a)return;const cache=await caches.open(OFF_CACHE);
+  // ほかの保存した範囲と重なる地図は残す
+  const keep=new Set();S.offline.forEach((o,j)=>{if(j!==i)offTiles(o.b,o.gsi).forEach(t=>keep.add(t.join("/")));});
+  const tpl="https://tiles.openfreemap.org/planet/_/{z}/{x}/{y}.pbf";
+  for(const t of offTiles(a.b,a.gsi)){if(keep.has(t.join("/")))continue;const[k,z,x,y]=t;
+    await cache.delete(k==="v"?tpl.replace("{z}",z).replace("{x}",x).replace("{y}",y):`https://cyberjapandata.gsi.go.jp/xyz/std/${z}/${x}/${y}`+".png");}
+  S.offline.splice(i,1);save();renderOffline();toast(`「${a.name}」の保存を消しました`);}
+$("offSave").onclick=offSave;$("offGsi").onchange=offEstimate;
+$("offList").addEventListener("click",e=>{const g=e.target.closest("[data-offgo]"),d=e.target.closest("[data-offdel]");
+  if(g){const a=S.offline[+g.dataset.offgo];map.fitBounds([[a.b.w,a.b.s],[a.b.e,a.b.n]],{duration:500});}
+  if(d){if(!d.dataset.armed){d.dataset.armed="1";d.textContent="本当に削除";return;}offDelete(+d.dataset.offdel);}});
+addEventListener("offline",()=>toast("電波がありません。保存した地図と、前に見た地図を表示します"));
 /* ---- My Map：名前を付けて保存・一覧から開く ---- */
 function snapshot(){return JSON.parse(JSON.stringify({pins:S.pins,lines:S.lines,sun:S.sun,nsew:S.nsew,base:S.base}));}
 const isOpen=m=>!!(S.openName&&m.name===S.openName&&S.pins.length);
