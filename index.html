@@ -1356,19 +1356,22 @@ function offTiles(b,gsi){const out=[];const add=(z0,z1,kind)=>{for(let z=z0;z<=z
     for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)out.push([kind,z,x,y]);}};
   add(0,OFF_VZ,"v");if(gsi)add(2,OFF_GZ,"g");return out;}
 const offBytes=t=>t.reduce((a,[k])=>a+(k==="v"?38e3:22e3),0);
+// 枚数は配列を作らずに数える(日本全体を表示しているときに何千万枚分の配列を作ると、iPhoneが落ちるため)
+function offCount(b,gsi){if(!(b.e>b.w)||b.e-b.w>30||b.n-b.s>30)return {n:Infinity,bytes:0};let v=0,g=0;const c=z=>(lon2x(b.e,z)-lon2x(b.w,z)+1)*(lat2y(b.s,z)-lat2y(b.n,z)+1);
+  for(let z=0;z<=OFF_VZ;z++)v+=c(z);if(gsi)for(let z=2;z<=OFF_GZ;z++)g+=c(z);return {n:v+g,bytes:v*38e3+g*22e3};}
 const fmtMB=b=>b<1e6?"1MB未満":b<1e9?Math.round(b/1e6)+"MB":(b/1e9).toFixed(1)+"GB";
 function curBounds(){const bd=map.getBounds();return {w:bd.getWest(),s:bd.getSouth(),e:bd.getEast(),n:bd.getNorth()};}
-function offEstimate(){if(!map||!$("offEst"))return;const t=offTiles(curBounds(),$("offGsi").checked);
-  $("offEst").textContent=t.length>OFF_MAX?`いまの範囲は広すぎます(およそ${fmtMB(offBytes(t))})。地図を拡大して、行く場所のまわりだけにしてください。`:`いま表示している範囲を保存します(およそ${fmtMB(offBytes(t))})。`;
-  $("offSave").disabled=t.length>OFF_MAX;}
+function offEstimate(){if(!map||!$("offEst"))return;const t=offCount(curBounds(),$("offGsi").checked);
+  $("offEst").textContent=t.n>OFF_MAX?"いまの範囲は広すぎます。地図を拡大して、行く場所のまわりだけにしてください。":`いま表示している範囲を保存します(およそ${fmtMB(t.bytes)})。`;
+  $("offSave").disabled=t.n>OFF_MAX;}
 async function offUsage(){try{const e=await navigator.storage.estimate();$("offUse").textContent=`このアプリがiPhoneで使っている容量：約${fmtMB(e.usage||0)}`;}catch(e){}}
 function renderOffline(){const g=$("offGroup");if(!g)return;if(!offOk()){g.hidden=true;return;}
   const L=S.offline||[];
   $("offList").innerHTML=L.map((a,i)=>`<div class="item"><span><b>${esc(a.name)}</b><br><small class="note">${esc(a.date)}・約${fmtMB(a.bytes)}${a.gsi?"・国土地理院も":""}</small></span><span class="row" style="flex-wrap:nowrap"><button class="btn small" data-offgo="${i}">表示</button><button class="btn small danger" data-offdel="${i}">削除</button></span></div>`).join("");
   offEstimate();offUsage();}
 let offBusy=false;
-async function offSave(){if(offBusy||!map)return;const b=curBounds(),gsi=$("offGsi").checked,list=offTiles(b,gsi);
-  if(list.length>OFF_MAX){offEstimate();return;}
+async function offSave(){if(offBusy||!map)return;const b=curBounds(),gsi=$("offGsi").checked;
+  if(offCount(b,gsi).n>OFF_MAX){offEstimate();return;}const list=offTiles(b,gsi);
   if(!navigator.onLine){toast("電波があるところで保存してください");return;}
   offBusy=true;$("offSave").disabled=true;const prog=$("offProg");prog.hidden=false;prog.textContent="保存の準備をしています…";
   try{try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist();}catch(e){}

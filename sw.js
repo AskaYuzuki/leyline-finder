@@ -1,4 +1,4 @@
-const CACHE="leyline-v84";
+const CACHE="leyline-v85";
 const SHELL=["./","index.html","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","places.js","https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"];
 // 地図のオフライン用：SAVED＝「この範囲を保存」で入れた地図(自動では消さない)と、地図のスタイル・文字・記号
 //                     AUTO ＝見た地図を自動で覚える分(上限を超えたら古いものから消す)
